@@ -71,7 +71,7 @@ const EditBillPage: React.FC<EditBillPageProps> = ({
       setEditingBill({ ...foundBill });
       setEditItems([...foundBill.items]);
     } else {
-      alert('Bill not found');
+      alert(`Invoice ${searchBillNumber} not found. Please check the invoice number and try again.`);
       setSelectedBill(null);
       setEditingBill(null);
     }
@@ -231,10 +231,12 @@ const EditBillPage: React.FC<EditBillPageProps> = ({
 
   // Format bill content for sharing
   const formatBillContent = (bill: Bill) => {
-    return `🏪 BILLING SYSTEM
+    return `INVOICE NO: ${bill.billNumber || 'N/A'}
+════════════════════════════════
+
+🏪 BILLING SYSTEM
 📋 BILL DETAILS
 ════════════════
-🧾 Bill No: ${bill.billNumber || 'N/A'}
 📅 Date: ${bill.date}
 👤 Customer: ${bill.customer}
 📱 Phone: ${bill.customerPhone}
@@ -249,9 +251,11 @@ ${bill.items.map((item, index) =>
 Total Amount: ₹${bill.totalAmount.toFixed(2)}
 Paid Amount: ₹${bill.paidAmount.toFixed(2)}
 Balance Amount: ₹${bill.balanceAmount.toFixed(2)}
-Payment Method: ${bill.paymentMethod?.toUpperCase() || 'CASH'}
+
+PAYMENT METHOD: ${bill.paymentMethod?.toUpperCase() || 'CASH'}
 ${bill.paymentMethod === 'upi' ? `UPI Type: ${bill.upiType}` : ''}
 ${bill.paymentMethod === 'check' ? `Bank: ${bill.bankName}, Check No: ${bill.checkNumber}` : ''}
+${bill.paymentMethod === 'cash_gpay' ? `Cash: ₹${bill.cashAmount?.toFixed(2) || '0.00'} + GPay: ₹${bill.gpayAmount?.toFixed(2) || '0.00'}` : ''}
 
 Thank you for your business! 🙏`;
   };
@@ -268,7 +272,7 @@ Thank you for your business! 🙏`;
             value={searchBillNumber}
             onChange={(e) => setSearchBillNumber(e.target.value.toUpperCase())}
             className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter 6-character bill number (e.g., ABC123)"
+            placeholder="Enter 6-digit invoice number (e.g., 250101)"
             maxLength={6}
           />
           <button
@@ -285,7 +289,7 @@ Thank you for your business! 🙏`;
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">
-              Bill No: {editingBill.billNumber} - {editingBill.customer}
+              Invoice No: {editingBill.billNumber} - {editingBill.customer}
             </h3>
             <div className="flex gap-2">
               <button

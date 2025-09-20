@@ -341,6 +341,10 @@ Thank you for your business! 🙏
       if (isWalkInMode && phone.length >= 10) {
         setSelectedCustomer(`Walk-In Customer (${phone})`);
         console.log(`[BILLING PAGE] Set walk-in customer name: Walk-In Customer (${phone})`);
+        // For walk-in customers, no previous balance is fetched or used
+        setPreviousBalance(0);
+        console.log(`[BILLING PAGE] Walk-in mode: Previous balance set to 0`);
+        return; // Exit early for walk-in customers
       }
       
       // Auto-fill previous balance when phone is entered - FETCH REAL-TIME FROM DATABASE
@@ -532,14 +536,23 @@ Thank you for your business! 🙏
       alert('Please enter a valid phone number (at least 10 digits)');
       return;
     }
+    
+    // CRITICAL: Validate that we have either customer name or phone (for walk-in)
+    if (!selectedCustomer && !selectedCustomerPhone) {
+      alert('Please provide customer information');
+      return;
+    }
 
     // Check if it's a balance-only payment or has items
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const existingBalance = customers.find(c => c.name === selectedCustomer)?.balance || 0;
     const hasPaymentAmount = paymentAmount && parseFloat(paymentAmount) > 0;
     
+    // For walk-in customers, we don't check existing balance
+    const effectiveExistingBalance = isWalkInMode ? 0 : existingBalance;
+    
     // Allow balance-only payment if customer has existing balance and payment amount is entered
-    if (validItems.length === 0 && existingBalance <= 0 && !hasPaymentAmount) {
+    if (validItems.length === 0 && effectiveExistingBalance <= 0 && !hasPaymentAmount) {
       alert('Please add at least one item or enter payment amount for balance payment');
       return;
     }
@@ -549,9 +562,9 @@ Thank you for your business! 🙏
       const paidAmount = parseFloat(paymentAmount);
       const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
       
-      if (validItems.length === 0 && existingBalance > 0) {
+      if (validItems.length === 0 && effectiveExistingBalance > 0) {
         // Balance-only payment: Allow overpayment for advance credit
-        const potentialNewBalance = existingBalance - paidAmount;
+        const potentialNewBalance = effectiveExistingBalance - paidAmount;
         if (potentialNewBalance < 0) {
           // Show advance payment message
           const advanceAmount = Math.abs(potentialNewBalance);
@@ -559,7 +572,7 @@ Thank you for your business! 🙏
         }
       } else {
         // Regular bill with items: Allow overpayment for advance credit
-        const totalBillAmount = existingBalance + itemsTotal;
+        const totalBillAmount = effectiveExistingBalance + itemsTotal;
         const potentialNewBalance = totalBillAmount - paidAmount;
         if (potentialNewBalance < 0) {
           // Show advance payment message
@@ -582,8 +595,11 @@ Thank you for your business! 🙏
       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
       
+      // For walk-in customers, no previous balance is used
+      const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
+      
       // Running balance calculation: Total = Previous Balance + Current Items
-      const totalBillAmount = previousBalance + itemsTotal;
+      const totalBillAmount = effectivePreviousBalance + itemsTotal;
       const newBalance = totalBillAmount - 0; // No payment, so new balance = total bill amount
 
       // Create bill record with running balance logic
@@ -615,8 +631,10 @@ Thank you for your business! 🙏
       setIsBalanceOnlyBill(true);
       setShowBillActions(true);
       
-      // Critical: Refresh customers data to sync balance across all views
-      await refreshCustomersData();
+      // Critical: Refresh customers data to sync balance across all views (only for non-walk-in customers)
+      if (!isWalkInMode) {
+        await refreshCustomersData();
+      }
       
       console.log('Bill confirmation without payment completed successfully');
       
@@ -664,25 +682,28 @@ Thank you for your business! 🙏
       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
       
+      // For walk-in customers, no previous balance is used
+      const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
+      
       // Running balance calculation
       let totalBillAmount, newBalance, requiredAmount, transactionAmount;
       
-      if (validItems.length === 0 && previousBalance > 0) {
+      if (validItems.length === 0 && effectivePreviousBalance > 0) {
         // This is a balance-only payment (no new items, just paying existing balance)
-        totalBillAmount = previousBalance; // Total is just the previous balance
+        totalBillAmount = effectivePreviousBalance; // Total is just the previous balance
         transactionAmount = 0; // No purchase amount for payment-only transactions
-        newBalance = previousBalance - paidAmount; // Remaining balance after payment
-        requiredAmount = previousBalance; // For validation, but partial payments are allowed
+        newBalance = effectivePreviousBalance - paidAmount; // Remaining balance after payment
+        requiredAmount = effectivePreviousBalance; // For validation, but partial payments are allowed
         
         // Allow overpayment for advance credit on balance-only payments
-        if (paidAmount > previousBalance) {
-          const advanceAmount = paidAmount - previousBalance;
+        if (paidAmount > effectivePreviousBalance) {
+          const advanceAmount = paidAmount - effectivePreviousBalance;
           console.log(`Advance payment: ₹${advanceAmount.toFixed(2)} will be credited to customer`);
         }
       } else {
         // Regular bill with items: Total = Previous Balance + Current Items
         transactionAmount = itemsTotal; // Individual transaction amount (items only)
-        totalBillAmount = previousBalance + itemsTotal;
+        totalBillAmount = effectivePreviousBalance + itemsTotal;
         newBalance = totalBillAmount - paidAmount; // New balance after payment
         requiredAmount = totalBillAmount; // For validation, but partial payments are allowed
         
@@ -747,9 +768,12 @@ Thank you for your business! 🙏
   const generateBillContent = async (bill: Bill, uiPreviousBalance: number) => {
     const time = new Date(bill.timestamp).toLocaleTimeString();
     
+    // Check if this is a walk-in customer bill
+    const isWalkInBill = bill.customer.includes('Walk-In Customer');
+    
     // CRITICAL FIX: Use the previous balance from UI state (before the bill was created)
-    // This ensures printed bills match exactly what was displayed in the UI
-    const billPreviousBalance = uiPreviousBalance;
+    // For walk-in customers, previous balance is always 0
+    const billPreviousBalance = isWalkInBill ? 0 : uiPreviousBalance;
     
     const itemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
     
@@ -769,6 +793,7 @@ Thank you for your business! 🙏
     
     // Add logging to verify calculations match UI
     console.log(`[BILL GENERATION] Calculation breakdown:
+      Walk-in Bill: ${isWalkInBill}
       Previous Balance: ₹${billPreviousBalance}
       Items Total: ₹${itemsTotal}
       Total Bill Amount: ₹${totalBillAmount}
@@ -778,20 +803,26 @@ Thank you for your business! 🙏
     let paymentMethodText = '';
     if (bill.paidAmount > 0) {
       if (bill.paymentMethod === 'cash') {
-        paymentMethodText = `\nPayment Method: Cash`;
+        paymentMethodText = `Payment Method: CASH`;
       } else if (bill.paymentMethod === 'upi') {
-        paymentMethodText = `\nPayment Method: UPI - ${bill.upiType}`;
+        paymentMethodText = `Payment Method: UPI - ${bill.upiType}`;
       } else if (bill.paymentMethod === 'check') {
-        paymentMethodText = `\nPayment Method: Check/DD - ${bill.bankName} - ${bill.checkNumber}`;
+        paymentMethodText = `Payment Method: CHECK/DD - ${bill.bankName} - ${bill.checkNumber}`;
       } else if (bill.paymentMethod === 'cash_gpay') {
-        paymentMethodText = `\nPayment Method: Cash: ₹${bill.cashAmount?.toFixed(2) || '0.00'} + GPay: ₹${bill.gpayAmount?.toFixed(2) || '0.00'}`;
+        paymentMethodText = `Payment Method: CASH + GPAY
+Cash: ₹${bill.cashAmount?.toFixed(2) || '0.00'} + GPay: ₹${bill.gpayAmount?.toFixed(2) || '0.00'}`;
       }
+    } else {
+      paymentMethodText = `Payment Method: NO PAYMENT (Balance Bill)`;
     }
 
-    // Different headers based on business
+    // Different headers based on business with prominent Invoice No display
     let businessHeader = '';
     if (businessId === 'vasan') {
-      businessHeader = `VASAN CHICKEN
+      businessHeader = `INVOICE NO: ${bill.billNumber || 'N/A'}
+════════════════════════════════
+
+VASAN CHICKEN
 ===============
 61, Vadivelu Mudali St, Chinnaiyan Colony, 
 Perambur, Chennai, Tamil Nadu 600011
@@ -799,7 +830,10 @@ ${shopDetails?.gstNumber ? `GST: ${shopDetails.gstNumber}` : ''}
 
 `;
     } else {
-      businessHeader = `${shopDetails?.shopName || 'BILLING SYSTEM'}
+      businessHeader = `INVOICE NO: ${bill.billNumber || 'N/A'}
+════════════════════════════════
+
+${shopDetails?.shopName || 'BILLING SYSTEM'}
 ==============
 ${shopDetails?.address || '21 West Cemetery Road, Old Washermanpet, Chennai 21'}
 ${shopDetails?.gstNumber ? `GST: ${shopDetails.gstNumber}` : ''}
@@ -811,8 +845,7 @@ Email: mathangopal5467@yahoo.com
     }
 
     // Generate the bill content with items
-    return `${businessHeader}Bill No: ${bill.billNumber || 'N/A'}
-Date: ${bill.date}
+    return `${businessHeader}Date: ${bill.date}
 Time: ${time}
 Customer: ${bill.customer}
 Phone: ${bill.customerPhone}
@@ -825,11 +858,12 @@ ${bill.items.length === 0 ? 'No items - Payment Only Transaction' :
   ).join('\n')}
 
 --------------------------------
-Previous Balance: ₹${billPreviousBalance.toFixed(2)}
-Current Items: ₹${itemsTotal.toFixed(2)}
+${isWalkInBill ? '' : `Previous Balance: ₹${billPreviousBalance.toFixed(2)}\n`}Current Items: ₹${itemsTotal.toFixed(2)}
 Total Bill Amount: ₹${bill.items.length === 0 && bill.paidAmount > 0 ? '0.00' : totalBillAmount.toFixed(2)}
 Payment Amount: ₹${bill.paidAmount.toFixed(2)}
-New Balance: ₹${newBalance.toFixed(2)}${paymentMethodText}
+New Balance: ₹${newBalance.toFixed(2)}
+
+${paymentMethodText}
 ================================
 
 Thank you for your business!`.trim();
@@ -1261,17 +1295,17 @@ ${bills.map((bill, index) => {
   const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
   
   return `
-Bill No: ${bill.billNumber || 'N/A'} - Date: ${formatDate(bill.date)}
+Invoice No: ${bill.billNumber || 'N/A'} - Date: ${formatDate(bill.date)}
 ${bill.items.map(item => 
   `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
 ).join('\n')}
 Total: ₹${currentItemsTotal.toFixed(2)}
 Paid: ₹${bill.paidAmount.toFixed(2)}
 Balance: ₹${bill.balanceAmount.toFixed(2)}
-Payment: ${bill.paymentMethod === 'cash' ? 'Cash' : 
+PAYMENT METHOD: ${bill.paymentMethod === 'cash' ? 'CASH' : 
           bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
-          bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
-          `Check/DD - ${bill.bankName} - ${bill.checkNumber}`}
+          bill.paymentMethod === 'cash_gpay' ? 'CASH + GPAY' :
+          `CHECK/DD - ${bill.bankName} - ${bill.checkNumber}`}
 -----------------------------------
 `;
 }).join('')}
@@ -1367,7 +1401,11 @@ Thank you for your business!
     // Update customer balance
     await updateCustomerBalance(selectedCustomer, newBalance);
     
-    alert(`Customer balance updated successfully!\nPrevious Balance: ₹${existingBalance.toFixed(2)}\nNew Items: ₹${itemsTotal.toFixed(2)}\nPayment: ₹${paidAmount.toFixed(2)}\nNew Balance: ₹${newBalance.toFixed(2)}`);
+    alert(`Customer balance updated successfully!
+Previous Balance: ₹${existingBalance.toFixed(2)}
+New Items: ₹${itemsTotal.toFixed(2)}
+Payment: ₹${paidAmount.toFixed(2)}
+New Balance: ₹${newBalance.toFixed(2)}`);
   };
 
   // Generate comprehensive customer data for download
@@ -1928,11 +1966,11 @@ Generated by Billing System`;
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-3">
               <div className="bg-gray-50 p-3 rounded-lg space-y-1">
                 <div className="text-sm">Items Total: ₹{totalAmount.toFixed(2)}</div>
-                {selectedCustomer && previousBalance > 0 && (
+                {selectedCustomer && previousBalance > 0 && !isWalkInMode && (
                   <div className="text-sm text-red-600">Previous Balance: ₹{previousBalance.toFixed(2)}</div>
                 )}
                 <div className="text-xl font-bold border-t pt-1">
-                  Total Bill Amount: ₹{(previousBalance + totalAmount).toFixed(2)}
+                  Total Bill Amount: ₹{(isWalkInMode ? totalAmount : previousBalance + totalAmount).toFixed(2)}
                 </div>
               </div>
               
@@ -1954,11 +1992,14 @@ Generated by Billing System`;
                   const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                   const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                   
+                  // For walk-in customers, no previous balance
+                  const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
+                  
                   let requiredAmount;
-                  if (validItems.length === 0 && previousBalance > 0) {
-                    requiredAmount = previousBalance;
+                  if (validItems.length === 0 && effectivePreviousBalance > 0) {
+                    requiredAmount = effectivePreviousBalance;
                   } else {
-                    requiredAmount = previousBalance + itemsTotal;
+                    requiredAmount = effectivePreviousBalance + itemsTotal;
                   }
                   
                   if (paidAmount > requiredAmount) {
@@ -1986,7 +2027,7 @@ Generated by Billing System`;
               
               <div className="flex flex-col gap-2">
                 <div className="text-lg font-bold">
-                  New Balance: ₹{((totalAmount + previousBalance) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+                  New Balance: ₹{(isWalkInMode ? (totalAmount - (parseFloat(paymentAmount) || 0)) : ((totalAmount + previousBalance) - (parseFloat(paymentAmount) || 0))).toFixed(2)}
                 </div>
                 <button
                   onClick={() => {
@@ -2185,11 +2226,14 @@ Generated by Billing System`;
                     const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                     
+                    // For walk-in customers, no previous balance
+                    const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
+                    
                     let requiredAmount;
-                    if (validItems.length === 0 && previousBalance > 0) {
-                      requiredAmount = previousBalance;
+                    if (validItems.length === 0 && effectivePreviousBalance > 0) {
+                      requiredAmount = effectivePreviousBalance;
                     } else {
-                      requiredAmount = previousBalance + itemsTotal;
+                      requiredAmount = effectivePreviousBalance + itemsTotal;
                     }
                     
                     const difference = paidAmount - requiredAmount;
@@ -2199,10 +2243,12 @@ Generated by Billing System`;
                       <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
                         <h4 className="font-medium text-gray-800 mb-2">Payment Summary</h4>
                         <div className="text-sm space-y-1">
-                          <div className="flex justify-between">
-                            <span>Previous Balance:</span>
-                            <span>₹{previousBalance.toFixed(2)}</span>
-                          </div>
+                          {!isWalkInMode && (
+                            <div className="flex justify-between">
+                              <span>Previous Balance:</span>
+                              <span>₹{effectivePreviousBalance.toFixed(2)}</span>
+                            </div>
+                          )}
                           <div className="flex justify-between">
                             <span>Current Items:</span>
                             <span>₹{itemsTotal.toFixed(2)}</span>
@@ -2255,11 +2301,14 @@ Generated by Billing System`;
                       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                       
+                      // For walk-in customers, no previous balance
+                      const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
+                      
                       let requiredAmount;
-                      if (validItems.length === 0 && previousBalance > 0) {
-                        requiredAmount = previousBalance;
+                      if (validItems.length === 0 && effectivePreviousBalance > 0) {
+                        requiredAmount = effectivePreviousBalance;
                       } else {
-                        requiredAmount = previousBalance + itemsTotal;
+                        requiredAmount = effectivePreviousBalance + itemsTotal;
                       }
                       
                       const isValidPayment = paidAmount > 0;
@@ -2621,7 +2670,7 @@ Generated by Billing System`;
                     <thead>
                       <tr className="bg-gray-100">
                         <th className="border border-gray-300 p-2 text-left">Date</th>
-                        <th className="border border-gray-300 p-2 text-left">Bill No</th>
+                        <th className="border border-gray-300 p-2 text-left">Invoice No</th>
                         <th className="border border-gray-300 p-2 text-left">Items</th>
                         <th className="border border-gray-300 p-2 text-left">Rate</th>
                         <th className="border border-gray-300 p-2 text-right">Purchase</th>
@@ -2634,7 +2683,7 @@ Generated by Billing System`;
                       {customerHistory.map((bill, index) => (
                         <tr key={index} className="hover:bg-gray-50">
                           <td className="border border-gray-300 p-2">{formatDate(bill.date)}</td>
-                          <td className="border border-gray-300 p-2 font-mono">{bill.billNumber || 'N/A'}</td>
+                          <td className="border border-gray-300 p-2 font-mono font-bold">{bill.billNumber || 'N/A'}</td>
                           <td className="border border-gray-300 p-2">
                             {bill.items.map((item, idx) => (
                               <div key={idx} className="text-sm">
@@ -2655,10 +2704,12 @@ Generated by Billing System`;
                           <td className="border border-gray-300 p-2 text-right text-lg font-bold text-green-600">₹{bill.paidAmount.toFixed(2)}</td>
                           <td className="border border-gray-300 p-2 text-right text-lg font-bold">₹{bill.balanceAmount.toFixed(2)}</td>
                           <td className="border border-gray-300 p-2">
-                            {bill.paymentMethod === 'cash' ? 'Cash' : 
-                             bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
-                             bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
-                             `Check/DD - ${bill.bankName}`}
+                            <span className="font-medium text-sm">
+                              {bill.paymentMethod === 'cash' ? '💵 CASH' : 
+                               bill.paymentMethod === 'upi' ? `📱 UPI - ${bill.upiType}` :
+                               bill.paymentMethod === 'cash_gpay' ? '💵+📱 CASH + GPAY' :
+                               `🏦 CHECK/DD - ${bill.bankName}`}
+                            </span>
                           </td>
                         </tr>
                       ))}

@@ -64,7 +64,8 @@ const WalkInBilling: React.FC<WalkInBillingProps> = ({
   const generateBillContent = () => {
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
-    const newBalance = previousBalance + itemsTotal;
+    // For walk-in customers, no previous balance is used
+    const newBalance = itemsTotal; // Walk-in bills don't carry forward balances
 
     return `
 🏪 ${shopDetails?.shopName || 'BILLING SYSTEM'}
@@ -86,7 +87,6 @@ ${validItems.map(item =>
 
 💰 BILL SUMMARY:
 ────────────────
-Previous Balance: ₹${previousBalance.toFixed(2)}
 Current Items: ₹${itemsTotal.toFixed(2)}
 Total Amount: ₹${newBalance.toFixed(2)}
 
@@ -179,14 +179,6 @@ Thank you for your business! 🙏
           />
         </div>
       </div>
-
-      {isValidPhone && previousBalance > 0 && (
-        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm text-yellow-800">
-            ⚠️ Existing balance found: <strong>₹{previousBalance.toFixed(2)}</strong>
-          </p>
-        </div>
-      )}
 
       {isValidPhone && totalAmount > 0 && (
         <div className="mt-3 flex gap-2">

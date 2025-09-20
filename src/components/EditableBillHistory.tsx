@@ -100,17 +100,17 @@ ${bills.map((bill, index) => {
   const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
   
   return `
-Bill No: ${bill.billNumber || 'N/A'} - Date: ${formatDate(bill.date)}
+Invoice No: ${bill.billNumber || 'N/A'} - Date: ${formatDate(bill.date)}
 ${bill.items.map(item => 
   `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
 ).join('\n')}
 Total: ₹${currentItemsTotal.toFixed(2)}
 Paid: ₹${bill.paidAmount.toFixed(2)}
 Balance: ₹${bill.balanceAmount.toFixed(2)}
-Payment: ${bill.paymentMethod === 'cash' ? 'Cash' : 
+PAYMENT METHOD: ${bill.paymentMethod === 'cash' ? 'CASH' : 
           bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
-          bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
-          `Check/DD - ${bill.bankName} - ${bill.checkNumber}`}
+          bill.paymentMethod === 'cash_gpay' ? 'CASH + GPAY' :
+          `CHECK/DD - ${bill.bankName} - ${bill.checkNumber}`}
 -----------------------------------
 `;
 }).join('')}
@@ -212,7 +212,7 @@ Thank you for your business!
           <thead>
             <tr className="bg-gray-100">
               <th className="border border-gray-300 p-3 text-left">Date</th>
-              <th className="border border-gray-300 p-3 text-left">Bill No</th>
+              <th className="border border-gray-300 p-3 text-left">Invoice No</th>
               <th className="border border-gray-300 p-3 text-left">Items</th>
               <th className="border border-gray-300 p-3 text-left">Purchase</th>
               <th className="border border-gray-300 p-3 text-left">Paid</th>
