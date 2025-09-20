@@ -337,6 +337,12 @@ Thank you for your business! 🙏
       
       console.log(`[BILLING PAGE] Phone entered: ${phone}`);
       
+      // For walk-in customers, set a default customer name when phone is entered
+      if (isWalkInMode && phone.length >= 10) {
+        setSelectedCustomer(`Walk-In Customer (${phone})`);
+        console.log(`[BILLING PAGE] Set walk-in customer name: Walk-In Customer (${phone})`);
+      }
+      
       // Auto-fill previous balance when phone is entered - FETCH REAL-TIME FROM DATABASE
       if (phone.length >= 10) { // Valid phone number length
         console.log(`[BILLING PAGE] Fetching balance for phone: ${phone}`);
@@ -521,6 +527,12 @@ Thank you for your business! 🙏
       return;
     }
 
+    // Additional validation for walk-in customers
+    if (isWalkInMode && selectedCustomerPhone && selectedCustomerPhone.length < 10) {
+      alert('Please enter a valid phone number (at least 10 digits)');
+      return;
+    }
+
     // Check if it's a balance-only payment or has items
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const existingBalance = customers.find(c => c.name === selectedCustomer)?.balance || 0;
@@ -576,7 +588,7 @@ Thank you for your business! 🙏
 
       // Create bill record with running balance logic
       const billRecord = {
-        customer: selectedCustomer,
+        customer: isWalkInMode ? `Walk-In Customer (${selectedCustomerPhone})` : selectedCustomer,
         customerPhone: selectedCustomerPhone,
         date: selectedDate,
         items: validItems,
@@ -587,6 +599,9 @@ Thank you for your business! 🙏
       };
 
       console.log('Attempting to save bill without payment:', billRecord);
+      console.log('Walk-in mode:', isWalkInMode);
+      console.log('Selected customer:', selectedCustomer);
+      console.log('Selected customer phone:', selectedCustomerPhone);
 
       // Add to billing history with error handling
       const savedBill = await addBill(billRecord);
@@ -680,7 +695,7 @@ Thank you for your business! 🙏
 
       // Create bill record with running balance logic
       const billRecord = {
-        customer: selectedCustomer,
+        customer: isWalkInMode ? `Walk-In Customer (${selectedCustomerPhone})` : selectedCustomer,
         customerPhone: selectedCustomerPhone,
         date: selectedDate,
         items: validItems,
@@ -696,6 +711,9 @@ Thank you for your business! 🙏
       };
 
       console.log('Attempting to save bill:', billRecord);
+      console.log('Walk-in mode:', isWalkInMode);
+      console.log('Selected customer:', selectedCustomer);
+      console.log('Selected customer phone:', selectedCustomerPhone);
 
       // Add to billing history with error handling
       const savedBill = await addBill(billRecord);
@@ -1113,6 +1131,11 @@ Use "Confirm Bill" to save this bill.
     setSelectedCustomerPhone('');
     setCustomerInput('');
     setPreviousBalance(0); // Reset previous balance
+    
+    // For walk-in mode, don't clear the customer name if phone is still entered
+    if (isWalkInMode && selectedCustomerPhone) {
+      setSelectedCustomer(`Walk-In Customer (${selectedCustomerPhone})`);
+    }
     // Default to "Chicken Live" instead of empty
     const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) || 
                               products.find(p => p.name.toLowerCase().includes('live')) ||

@@ -421,6 +421,11 @@ export const useSupabaseData = (businessId: string) => {
     try {
       // Validate required fields before database insertion
       if (!bill.customer || !bill.customerPhone || !bill.date) {
+        console.error('Missing required bill information:', {
+          customer: bill.customer,
+          customerPhone: bill.customerPhone,
+          date: bill.date
+        });
         throw new Error('Missing required bill information');
       }
 
