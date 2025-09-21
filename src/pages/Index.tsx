@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Calculator, Check, X, Users, History, Printer, FileText, MessageCircle, Calendar, LogOut, Package, BarChart3, Truck, RefreshCw, Building2 } from 'lucide-react';
+import { Search, Plus, Calculator, Check, X, Users, History, Printer, FileText, MessageCircle, Calendar, LogOut, Package, BarChart3, RefreshCw, Building2 } from 'lucide-react';
 import Login from '../components/Login';
 import CustomerManager from '../components/CustomerManager';
 import Products from '../components/Products';
 import SalesDashboard from '../components/SalesDashboard';
 import EditBillPage from '../components/EditBillPage';
-import LoadManager from '../components/LoadManager';
 import ShopRegistration from '../components/ShopRegistration';
 import WalkInBilling from '../components/WalkInBilling';
 import { useSupabaseData } from '../hooks/useSupabaseData';
@@ -114,7 +113,6 @@ const Index = () => {
 
   // State management
   const [currentView, setCurrentView] = useState('billing');
-  const [suppliers, setSuppliers] = useState(['Mahi poultry services', 'Pragathi broiler farms']);
   
   // Billing form state
   const [selectedCustomer, setSelectedCustomer] = useState('');
@@ -138,9 +136,6 @@ const Index = () => {
   const [cashAmount, setCashAmount] = useState('');
   const [gpayAmount, setGpayAmount] = useState('');
 
-  // Add supplier state
-  const [newSupplierName, setNewSupplierName] = useState('');
-
   // Balance tracking state
   const [balanceCustomer, setBalanceCustomer] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -159,7 +154,25 @@ const Index = () => {
   const sendBillToWhatsApp = (phone: string, billData: any) => {
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
-    const newBalance = previousBalance + itemsTotal;
+    // For walk-in customers, don't include previous balance in total
+    const newBalance = isWalkInMode ? itemsTotal : previousBalance + itemsTotal;
+
+    // Build bill summary based on customer type
+    let billSummary;
+    if (isWalkInMode) {
+      // Walk-in customers: No previous balance line
+      billSummary = `💰 BILL SUMMARY:
+────────────────
+Current Items: ₹${itemsTotal.toFixed(2)}
+Total Amount: ₹${newBalance.toFixed(2)}`;
+    } else {
+      // Regular customers: Include previous balance
+      billSummary = `💰 BILL SUMMARY:
+────────────────
+Previous Balance: ₹${previousBalance.toFixed(2)}
+Current Items: ₹${itemsTotal.toFixed(2)}
+Total Amount: ₹${newBalance.toFixed(2)}`;
+    }
 
     const billContent = `
 🏪 ${shopDetails?.shopName || 'BILLING SYSTEM'}
@@ -178,11 +191,7 @@ ${validItems.map(item =>
   `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
 ).join('\n')}
 
-💰 BILL SUMMARY:
-────────────────
-Previous Balance: ₹${previousBalance.toFixed(2)}
-Current Items: ₹${itemsTotal.toFixed(2)}
-Total Amount: ₹${newBalance.toFixed(2)}
+${billSummary}
 
 Thank you for your business! 🙏
     `.trim();
@@ -499,8 +508,8 @@ Thank you for your business! 🙏
       
       // For walk-in customers, set a default customer name when phone is entered
       if (isWalkInMode && phone.length >= 10) {
-        setSelectedCustomer(`Walk-In Customer (${phone})`);
-        console.log(`[BILLING PAGE] Set walk-in customer name: Walk-In Customer (${phone})`);
+        setSelectedCustomer(`Walk-In Customer (${phone}) `);
+        console.log(`[BILLING PAGE] Set walk-in customer name: Walk-In Customer (${phone}) `);
       }
       
       // Auto-fill previous balance when phone is entered - FETCH REAL-TIME FROM DATABASE
@@ -750,8 +759,8 @@ Thank you for your business! 🙏
       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
       
-      // Running balance calculation: Total = Previous Balance + Current Items
-      const totalBillAmount = previousBalance + itemsTotal;
+      // Running balance calculation: Total = Previous Balance + Current Items (exclude for walk-in customers)
+      const totalBillAmount = isWalkInMode ? itemsTotal : previousBalance + itemsTotal;
       const newBalance = totalBillAmount - 0; // No payment, so new balance = total bill amount
 
       // Create bill record with running balance logic
@@ -849,9 +858,9 @@ Thank you for your business! 🙏
           console.log(`Advance payment: ₹${advanceAmount.toFixed(2)} will be credited to customer`);
         }
       } else {
-        // Regular bill with items: Total = Previous Balance + Current Items
+        // Regular bill with items: Total = Previous Balance + Current Items (exclude for walk-in customers)
         transactionAmount = itemsTotal; // Individual transaction amount (items only)
-        totalBillAmount = previousBalance + itemsTotal;
+        totalBillAmount = isWalkInMode ? itemsTotal : previousBalance + itemsTotal;
         newBalance = totalBillAmount - paidAmount; // New balance after payment
         requiredAmount = totalBillAmount; // For validation, but partial payments are allowed
         
@@ -931,9 +940,10 @@ Thank you for your business! 🙏
       transactionAmount = 0; // No purchase amount for payment-only transactions
       newBalance = billPreviousBalance - bill.paidAmount; // Direct balance reduction
     } else {
-      // Normal transaction with items
+      // Normal transaction with items (exclude previous balance for walk-in customers)
       transactionAmount = itemsTotal; // Individual transaction amount (items only)
-      totalBillAmount = billPreviousBalance + itemsTotal;
+      const isWalkInCustomer = bill.customer.includes('Walk-In Customer');
+      totalBillAmount = isWalkInCustomer ? itemsTotal : billPreviousBalance + itemsTotal;
       newBalance = totalBillAmount - bill.paidAmount;
     }
     
@@ -1329,15 +1339,6 @@ Use "Confirm Bill" to save this bill.
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
-  // Add new supplier
-  const addSupplier = () => {
-    if (newSupplierName.trim() && !suppliers.includes(newSupplierName.trim())) {
-      setSuppliers(prev => [...prev, newSupplierName.trim()]);
-      setNewSupplierName('');
-      alert('Supplier added successfully!');
-    }
-  };
-
   // Get customer history with improved date filtering
   const getCustomerHistory = () => {
     if (!balanceCustomer) {
@@ -1538,7 +1539,11 @@ Thank you for your business!
     // Update customer balance
     await updateCustomerBalance(selectedCustomer, newBalance);
     
-    alert(`Customer balance updated successfully!\nPrevious Balance: ₹${existingBalance.toFixed(2)}\nNew Items: ₹${itemsTotal.toFixed(2)}\nPayment: ₹${paidAmount.toFixed(2)}\nNew Balance: ₹${newBalance.toFixed(2)}`);
+    alert(`Customer balance updated successfully!
+Previous Balance: ₹${existingBalance.toFixed(2)}
+New Items: ₹${itemsTotal.toFixed(2)}
+Payment: ₹${paidAmount.toFixed(2)}
+New Balance: ₹${newBalance.toFixed(2)}`);
   };
 
   // Generate comprehensive customer data for download
@@ -1757,7 +1762,7 @@ Generated by Billing System`;
             </div>
           </div>
           
-          {/* Navigation - UPDATED to include Load page */}
+          {/* Navigation */}
           <div className="flex flex-wrap justify-center gap-2">
             <button
               onClick={() => setCurrentView('billing')}
@@ -1780,17 +1785,6 @@ Generated by Billing System`;
             >
               <FileText className="inline mr-1 h-4 w-4" />
               Edit Bill
-            </button>
-            <button
-              onClick={() => setCurrentView('load')}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                currentView === 'load' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              <Truck className="inline mr-1 h-4 w-4" />
-              Load
             </button>
             <button
               onClick={() => setCurrentView('products')}
@@ -1890,8 +1884,8 @@ Generated by Billing System`;
               </div>
             </div>
             
-            {/* Compact form layout for desktop */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            {/* Mobile-optimized form layout */}
+            <div className="space-y-3 mb-4">
               {/* Date Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1902,14 +1896,14 @@ Generated by Billing System`;
                     type="date"
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                   />
-                  <Calendar className="absolute right-2 top-2 h-5 w-5 text-gray-400 pointer-events-none" />
+                  <Calendar className="absolute right-2 top-2 h-4 w-4 text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
               {/* Walk-in Customer Option */}
-              <div className="lg:col-span-3 mb-4">
+              <div className="mb-3">
                 <label className="flex items-center space-x-2">
                   <input
                     type="checkbox"
@@ -1930,7 +1924,7 @@ Generated by Billing System`;
 
               {/* Walk-in Billing Component */}
               {isWalkInMode && (
-                <div className="lg:col-span-3">
+                <div>
                   <WalkInBilling
                     onPhoneUpdate={handlePhoneChange}
                     selectedCustomerPhone={selectedCustomerPhone}
@@ -1947,78 +1941,76 @@ Generated by Billing System`;
 
               {/* Customer Selection - Only show when not in walk-in mode */}
               {!isWalkInMode && (
-                <>
-                  <div className="lg:col-span-2 relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Customer Name
-                    </label>
-                    <div className="relative">
-                      <input
-                        ref={customerInputRef}
-                        type="text"
-                        value={customerInput}
-                        onChange={(e) => {
-                          setCustomerInput(e.target.value);
-                          setShowCustomerSuggestions(true);
-                        }}
-                        onFocus={() => setShowCustomerSuggestions(true)}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Type customer name"
-                  />
-                  <Search className="absolute right-2 top-2 h-5 w-5 text-gray-400" />
-                </div>
-                
-                {/* Customer Suggestions with Real-Time Balances */}
-                {showCustomerSuggestions && customerInput && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {customerSuggestionsWithBalance.length > 0 ? (
-                      customerSuggestionsWithBalance.map((customer, index) => (
-                        <div
-                          key={index}
-                          onClick={() => handleCustomerSelect(customer.name)}
-                          className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              <div className="text-xs text-gray-500">{customer.phone}</div>
-                            </div>
-                            {customer.balance > 0 && (
-                              <span className="text-red-600 text-xs font-medium">
-                                Balance: ₹{customer.balance.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      // Fallback to filtered customers if real-time data isn't ready
-                      filteredCustomers.map((customer, index) => (
-                        <div
-                          key={index}
-                          onClick={() => handleCustomerSelect(customer.name)}
-                          className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              <div className="text-xs text-gray-500">{customer.phone}</div>
-                            </div>
-                            {customer.balance > 0 && (
-                              <span className="text-red-600 text-xs font-medium">
-                                Balance: ₹{customer.balance.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Name
+                  </label>
+                  <div className="relative">
+                    <input
+                      ref={customerInputRef}
+                      type="text"
+                      value={customerInput}
+                      onChange={(e) => {
+                        setCustomerInput(e.target.value);
+                        setShowCustomerSuggestions(true);
+                      }}
+                      onFocus={() => setShowCustomerSuggestions(true)}
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      placeholder="Type customer name"
+                    />
+                    <Search className="absolute right-2 top-2 h-4 w-4 text-gray-400" />
                   </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                
+                  {/* Customer Suggestions with Real-Time Balances */}
+                  {showCustomerSuggestions && customerInput && (
+                    <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 max-h-32 overflow-y-auto shadow-lg">
+                      {customerSuggestionsWithBalance.length > 0 ? (
+                        customerSuggestionsWithBalance.map((customer, index) => (
+                          <div
+                            key={index}
+                            onClick={() => handleCustomerSelect(customer.name)}
+                            className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="font-medium text-xs">{customer.name}</div>
+                                <div className="text-xs text-gray-500">{customer.phone}</div>
+                              </div>
+                              {customer.balance > 0 && (
+                                <span className="text-red-600 text-xs font-medium">
+                                  ₹{customer.balance.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        // Fallback to filtered customers if real-time data isn't ready
+                        filteredCustomers.map((customer, index) => (
+                          <div
+                            key={index}
+                            onClick={() => handleCustomerSelect(customer.name)}
+                            className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="font-medium text-xs">{customer.name}</div>
+                                <div className="text-xs text-gray-500">{customer.phone}</div>
+                              </div>
+                              {customer.balance > 0 && (
+                                <span className="text-red-600 text-xs font-medium">
+                                  ₹{customer.balance.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Selected Customer Display with Balance and History - UPDATED with running balance system */}
             {selectedCustomer && (
@@ -2067,29 +2059,29 @@ Generated by Billing System`;
               </div>
             )}
 
-            {/* Bill Items Table - Compact */}
+            {/* Bill Items Table - Mobile Optimized */}
             <div className="overflow-x-auto mb-3">
-              <table className="w-full border-collapse border border-gray-300 min-w-[600px]">
+              <table className="w-full border-collapse border border-gray-300 min-w-[500px]">
                 <thead>
                   <tr className="bg-gray-100">
-                    <th className="border border-gray-300 p-1.5 text-left text-sm">No</th>
-                    <th className="border border-gray-300 p-1.5 text-left text-sm">Item</th>
-                    <th className="border border-gray-300 p-1.5 text-left text-sm">Weight (kg)</th>
-                    <th className="border border-gray-300 p-1.5 text-left text-sm">Rate (₹/kg)</th>
-                    <th className="border border-gray-300 p-1.5 text-left text-sm">Amount (₹)</th>
+                    <th className="border border-gray-300 p-1 text-left text-xs">No</th>
+                    <th className="border border-gray-300 p-1 text-left text-xs">Item</th>
+                    <th className="border border-gray-300 p-1 text-left text-xs">Weight</th>
+                    <th className="border border-gray-300 p-1 text-left text-xs">Rate</th>
+                    <th className="border border-gray-300 p-1 text-left text-xs">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {billItems.map((item, index) => (
                     <tr key={item.no}>
-                      <td className="border border-gray-300 p-1 text-center text-sm">
+                      <td className="border border-gray-300 p-1 text-center text-xs">
                         {item.no}
                       </td>
                       <td className="border border-gray-300 p-1">
                         <select
                           value={item.item}
                           onChange={(e) => handleItemChange(index, 'item', e.target.value)}
-                          className="w-full p-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                          className="w-full p-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-xs"
                         >
                           <option value="">Select Item</option>
                           {products.map((product) => (
@@ -2103,7 +2095,7 @@ Generated by Billing System`;
                           step="0.1"
                           value={item.weight}
                           onChange={(e) => handleItemChange(index, 'weight', e.target.value)}
-                          className="w-full p-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                          className="w-full p-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-xs"
                           placeholder="0.0"
                         />
                       </td>
@@ -2113,11 +2105,11 @@ Generated by Billing System`;
                           step="0.01"
                           value={item.rate}
                           onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
-                          className="w-full p-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                          className="w-full p-1 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-xs"
                           placeholder="0.00"
                         />
                       </td>
-                      <td className="border border-gray-300 p-1 text-right font-medium text-sm">
+                      <td className="border border-gray-300 p-1 text-right font-medium text-xs">
                         ₹{item.amount.toFixed(2)}
                       </td>
                     </tr>
@@ -2126,15 +2118,15 @@ Generated by Billing System`;
               </table>
             </div>
 
-            {/* Updated Total and Payment Section - UPDATED with running balance system */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-3">
-              <div className="bg-gray-50 p-3 rounded-lg space-y-1">
-                <div className="text-sm">Items Total: ₹{totalAmount.toFixed(2)}</div>
-                {selectedCustomer && previousBalance > 0 && (
-                  <div className="text-sm text-red-600">Previous Balance: ₹{previousBalance.toFixed(2)}</div>
+            {/* Mobile-optimized Total and Payment Section */}
+            <div className="space-y-3 mb-3">
+              <div className="bg-gray-50 p-2 rounded-lg space-y-1">
+                <div className="text-xs">Items Total: ₹{totalAmount.toFixed(2)}</div>
+                {selectedCustomer && previousBalance > 0 && !isWalkInMode && (
+                  <div className="text-xs text-red-600">Previous Balance: ₹{previousBalance.toFixed(2)}</div>
                 )}
-                <div className="text-xl font-bold border-t pt-1">
-                  Total Bill Amount: ₹{(previousBalance + totalAmount).toFixed(2)}
+                <div className="text-lg font-bold border-t pt-1">
+                  Total Bill Amount: ₹{isWalkInMode ? totalAmount.toFixed(2) : (previousBalance + totalAmount).toFixed(2)}
                 </div>
               </div>
               
@@ -2157,7 +2149,9 @@ Generated by Billing System`;
                   const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                   
                   let requiredAmount;
-                  if (validItems.length === 0 && previousBalance > 0) {
+                  if (isWalkInMode) {
+                    requiredAmount = itemsTotal;
+                  } else if (validItems.length === 0 && previousBalance > 0) {
                     requiredAmount = previousBalance;
                   } else {
                     requiredAmount = previousBalance + itemsTotal;
@@ -2186,9 +2180,9 @@ Generated by Billing System`;
                 })()}
               </div>
               
-              <div className="flex flex-col gap-2">
-                <div className="text-lg font-bold">
-                  New Balance: ₹{((totalAmount + previousBalance) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+              <div className="space-y-2">
+                <div className="text-sm font-bold">
+                  New Balance: ₹{isWalkInMode ? (totalAmount - (parseFloat(paymentAmount) || 0)).toFixed(2) : ((totalAmount + previousBalance) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
                 </div>
                 <button
                   onClick={() => {
@@ -2200,7 +2194,7 @@ Generated by Billing System`;
                       customerInputRef.current.focus();
                     }
                   }}
-                  className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm flex items-center gap-1"
+                  className="w-full px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm flex items-center justify-center gap-1"
                 >
                   <RefreshCw size={14} />
                   Refresh
@@ -2208,14 +2202,14 @@ Generated by Billing System`;
               </div>
             </div>
 
-            {/* Updated Confirmation section */}
+            {/* Mobile-optimized Confirmation section */}
             <div className="border-t pt-3">
               <div className="flex justify-center">
                 <button
                   onClick={handleShowConfirmDialog}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm flex items-center justify-center gap-2"
                 >
-                  <Check className="inline mr-2 h-4 w-4" />
+                  <Check className="h-4 w-4" />
                   Confirm Bill
                 </button>
               </div>
@@ -2585,12 +2579,6 @@ Generated by Billing System`;
           </div>
         )}
 
-        {/* Load View - NEW */}
-        {currentView === 'load' && (
-          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
-            <LoadManager businessId={businessId} />
-          </div>
-        )}
 
         {/* Edit Bill View */}
         {currentView === 'editBill' && (
@@ -2658,34 +2646,6 @@ Generated by Billing System`;
                 businessId={businessId}
               />
 
-              {/* Add Supplier */}
-              <div>
-                <h3 className="text-xl font-semibold mb-4">Add New Supplier</h3>
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={newSupplierName}
-                    onChange={(e) => setNewSupplierName(e.target.value)}
-                    className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter supplier name"
-                  />
-                  <button
-                    onClick={addSupplier}
-                    className="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-                
-                <h4 className="font-medium mb-2">Current Suppliers ({suppliers.length})</h4>
-                <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                  {suppliers.map((supplier, index) => (
-                    <div key={index} className="py-1 border-b border-gray-100 last:border-b-0">
-                      {supplier}
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         )}

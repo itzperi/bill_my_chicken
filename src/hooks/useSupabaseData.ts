@@ -389,18 +389,7 @@ export const useSupabaseData = (businessId: string) => {
 
   const deleteCustomer = async (customerName: string) => {
     try {
-      // First, check if customer has any bills
-      const { data: customerBills } = await supabase
-        .from('bills')
-        .select('id')
-        .eq('customer_name', customerName)
-        .eq('business_id', businessId);
-
-      if (customerBills && customerBills.length > 0) {
-        throw new Error('Cannot delete customer with existing bills. Please delete all bills first.');
-      }
-
-      // Delete customer from database
+      // Delete customer from database (allow deletion even with existing bills)
       const { error } = await supabase
         .from('customers')
         .delete()

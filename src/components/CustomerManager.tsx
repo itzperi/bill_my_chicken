@@ -253,104 +253,104 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({
           <table className="w-full border-collapse border border-gray-300">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border border-gray-300 p-3 text-left">Name</th>
-                <th className="border border-gray-300 p-3 text-left">Phone</th>
-                <th className="border border-gray-300 p-3 text-left">Balance</th>
-                <th className="border border-gray-300 p-3 text-left">Actions</th>
+                <th className="border border-gray-300 p-2 sm:p-3 text-left text-sm sm:text-base">Name</th>
+                <th className="border border-gray-300 p-2 sm:p-3 text-left text-sm sm:text-base">Phone</th>
+                <th className="border border-gray-300 p-2 sm:p-3 text-left text-sm sm:text-base">Balance</th>
+                <th className="border border-gray-300 p-2 sm:p-3 text-left text-sm sm:text-base">Actions</th>
               </tr>
             </thead>
             <tbody>
               {customers.map((customer, index) => (
                 <tr key={`${customer.name}-${customer.phone}`}>
-                  <td className="border border-gray-300 p-3">
+                  <td className="border border-gray-300 p-2 sm:p-3">
                     {editingIndex === index ? (
                       <input
                         type="text"
                         value={editingCustomer.name}
                         onChange={(e) => setEditingCustomer({...editingCustomer, name: e.target.value})}
-                        className="w-full p-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-1 sm:p-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     ) : (
-                      customer.name
+                      <span className="text-sm sm:text-base">{customer.name}</span>
                     )}
                   </td>
-                  <td className="border border-gray-300 p-3">
+                  <td className="border border-gray-300 p-2 sm:p-3">
                     {editingIndex === index ? (
                       <input
                         type="tel"
                         value={editingCustomer.phone}
                         onChange={(e) => setEditingCustomer({...editingCustomer, phone: e.target.value})}
-                        className="w-full p-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-1 sm:p-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     ) : (
-                      customer.phone
+                      <span className="text-sm sm:text-base">{customer.phone}</span>
                     )}
                   </td>
-                  <td className="border border-gray-300 p-3">
+                  <td className="border border-gray-300 p-2 sm:p-3">
                     {editingIndex === index ? (
                       <input
                         type="number"
                         step="0.01"
                         value={editingCustomer.balance}
                         onChange={(e) => setEditingCustomer({...editingCustomer, balance: parseFloat(e.target.value) || 0})}
-                        className="w-full p-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                        className="w-full p-1 sm:p-2 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     ) : (
-                      `₹${customer.balance.toFixed(2)}`
+                      <span className="text-sm sm:text-base">₹{customer.balance.toFixed(2)}</span>
                     )}
                   </td>
-                  <td className="border border-gray-300 p-3">
+                  <td className="border border-gray-300 p-2 sm:p-3">
                     {editingIndex === index ? (
-                      <div className="flex gap-2">
+                      <div className="flex gap-1 sm:gap-2">
                         <button
                           onClick={handleEditSave}
                           disabled={isLoading}
-                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          className="px-2 sm:px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                           title="Save"
                         >
                           {isLoading ? (
-                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                            <div className="h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
                           ) : (
-                            <Save className="h-4 w-4" />
+                            <Save className="h-3 w-3 sm:h-4 sm:w-4" />
                           )}
                         </button>
                         <button
                           onClick={handleEditCancel}
                           disabled={isLoading}
-                          className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          className="px-2 sm:px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                           title="Cancel"
                         >
-                          <X className="h-4 w-4" />
+                          <X className="h-3 w-3 sm:h-4 sm:w-4" />
                         </button>
                       </div>
                     ) : (
-                      <div className="flex gap-2">
+                      <div className="flex gap-1 sm:gap-2">
                         <button
                           onClick={() => handleEditStart(index, customer)}
                           disabled={isLoading}
-                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                          className="px-2 sm:px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                           title="Edit"
                         >
-                          <Edit className="h-4 w-4" />
+                          <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                         </button>
                         {onDownloadCustomerData && (
                           <button
                             onClick={() => onDownloadCustomerData(customer.name)}
                             disabled={isLoading}
-                            className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            className="px-2 sm:px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                             title="Download customer data"
                           >
-                            <FileText className="h-4 w-4" />
+                            <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
                           </button>
                         )}
                         {onDeleteCustomer && (
                           <button
                             onClick={() => handleDeleteClick(index)}
                             disabled={isLoading}
-                            className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            className="px-2 sm:px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                             title="Delete"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                           </button>
                         )}
                       </div>

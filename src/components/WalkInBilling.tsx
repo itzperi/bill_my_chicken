@@ -228,10 +228,10 @@ Thank you for your business! 🙏
           </label>
           <input
             type="text"
-            value={selectedCustomer || 'Walk-in Customer'}
+            value={selectedCustomer || 'Walk-in Customer '}
             onChange={(e) => onCustomerUpdate(e.target.value)}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 bg-gray-50"
-            placeholder="Walk-in Customer"
+            placeholder="Walk-in Customer "
             readOnly={!!selectedCustomer}
           />
         </div>

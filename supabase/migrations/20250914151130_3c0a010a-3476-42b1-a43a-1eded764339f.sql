@@ -1,4 +1,4 @@
--- Insert all customer data from Santhosh Chicken report
+
 INSERT INTO public.customers (business_id, name, phone, balance) VALUES
 ('Santhosh Chicken 1', 'Aalaya', '91762 02011', 17449.50),
 ('Santhosh Chicken 1', 'A k Babu', '94444 09068', 18658.80),
