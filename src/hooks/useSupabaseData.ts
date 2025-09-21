@@ -416,24 +416,6 @@ export const useSupabaseData = (businessId: string) => {
     }
   };
 
-  // Generate unique 6-digit invoice number
-  const generateInvoiceNumber = async (): Promise<string> => {
-    const currentDate = new Date();
-    const year = currentDate.getFullYear().toString().slice(-2); // Last 2 digits of year
-    const month = (currentDate.getMonth() + 1).toString().padStart(2, '0'); // Month with leading zero
-    
-    // Get count of bills for current year-month
-    const { data: billsCount } = await supabase
-      .from('bills')
-      .select('id', { count: 'exact' })
-      .eq('business_id', businessId)
-      .gte('bill_date', `${currentDate.getFullYear()}-${month}-01`)
-      .lt('bill_date', `${currentDate.getFullYear()}-${(currentDate.getMonth() + 2).toString().padStart(2, '0')}-01`);
-    
-    const sequenceNumber = ((billsCount?.length || 0) + 1).toString().padStart(2, '0');
-    return `${year}${month}${sequenceNumber}`; // Format: YYMMNN (e.g., 250101 for first bill of Jan 2025)
-  };
-
   // Enhanced Add bill with comprehensive error handling and validation
   const addBill = async (bill: Omit<Bill, 'id' | 'timestamp'>) => {
     try {
@@ -451,16 +433,11 @@ export const useSupabaseData = (businessId: string) => {
         console.warn('Creating bill with no items - this is a balance-only transaction');
       }
 
-      // Generate unique 6-digit invoice number
-      const invoiceNumber = await generateInvoiceNumber();
-      console.log('Generated invoice number:', invoiceNumber);
-
       // Create the insert object with comprehensive field mapping
       const insertData = {
         customer_name: bill.customer,
         customer_phone: bill.customerPhone,
         bill_date: bill.date,
-        bill_number: invoiceNumber, // Add the generated invoice number
         items: bill.items as any,
         total_amount: bill.totalAmount || 0,
         paid_amount: bill.paidAmount || 0,

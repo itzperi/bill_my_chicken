@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { User, Lock, Eye, EyeOff, Key, ArrowLeft } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: (userType: 'owner' | 'staff', businessId: 'santhosh1' | 'santhosh2' | 'vasan' | 'demo1_business' | 'demo2_business' | 'demo3_business' | 'demo4_business' | 'demo5_business' | 'demo6_business' | 'demo7_business' | 'demo8_business' | 'demo9_business' | 'demo10_business') => void;
+  onLogin: (userType: 'owner' | 'staff', businessId: 'santhosh1' | 'santhosh2' | 'vasan' | 'test123' | 'demo1_business' | 'demo2_business' | 'demo3_business' | 'demo4_business' | 'demo5_business' | 'demo6_business' | 'demo7_business' | 'demo8_business' | 'demo9_business' | 'demo10_business') => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
@@ -26,6 +26,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [userCredentials, setUserCredentials] = useState({
     'mathan': { password: '050467', userType: 'owner' as const, businessId: 'santhosh1' as const },
     'Vasan': { password: '1234@', userType: 'owner' as const, businessId: 'vasan' as const },
+    'Test123': { password: '1234@', userType: 'owner' as const, businessId: 'test123' as const },
     // Legacy credentials for backward compatibility
     'Shop1': { password: 'abc@', userType: 'staff' as const, businessId: 'santhosh1' as const },
     'Santhosh': { password: '050467', userType: 'owner' as const, businessId: 'santhosh2' as const },

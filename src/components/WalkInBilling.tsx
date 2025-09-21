@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, User, Check, X, MessageCircle, Smartphone } from 'lucide-react';
+import { Phone, User, Check, X, MessageCircle, Smartphone, Printer } from 'lucide-react';
 
 interface BillItem {
   no: number;
@@ -126,6 +126,63 @@ Thank you for your business! 🙏
     setShowWhatsAppPreview(false);
   };
 
+  const handlePrint = () => {
+    const billContent = generateBillContent();
+    
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Walk-in Bill - ${new Date().toLocaleDateString()}</title>
+            <style>
+              body {
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                line-height: 1.4;
+                margin: 20px;
+                color: #000;
+              }
+              .bill-header {
+                text-align: center;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+                margin-bottom: 15px;
+              }
+              .bill-content {
+                white-space: pre-wrap;
+                font-family: 'Courier New', monospace;
+              }
+              @media print {
+                body { margin: 0; }
+                .bill-header { page-break-after: avoid; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="bill-header">
+              <h2>WALK-IN CUSTOMER BILL</h2>
+              <p>Date: ${new Date().toLocaleDateString('en-IN')}</p>
+            </div>
+            <div class="bill-content">${billContent}</div>
+          </body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      printWindow.focus();
+      
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+    
+    setShowWhatsAppPreview(false);
+  };
+
   return (
     <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4 mb-4">
       <div className="flex items-center mb-3">
@@ -212,7 +269,7 @@ Thank you for your business! 🙏
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               <button
                 onClick={handleSendWhatsApp}
                 className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
@@ -227,6 +284,14 @@ Thank you for your business! 🙏
               >
                 <Smartphone className="h-5 w-5" />
                 <span>SMS</span>
+              </button>
+
+              <button
+                onClick={handlePrint}
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <Printer className="h-5 w-5" />
+                <span>Print</span>
               </button>
             </div>
             

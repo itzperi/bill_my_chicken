@@ -42,7 +42,7 @@ interface Bill {
 }
 
 type UserType = 'owner' | 'staff';
-type BusinessId = 'santhosh1' | 'santhosh2' | 'vasan' | 'demo1_business' | 'demo2_business' | 'demo3_business' | 'demo4_business' | 'demo5_business' | 'demo6_business' | 'demo7_business' | 'demo8_business' | 'demo9_business' | 'demo10_business';
+type BusinessId = 'santhosh1' | 'santhosh2' | 'vasan' | 'test123' | 'demo1_business' | 'demo2_business' | 'demo3_business' | 'demo4_business' | 'demo5_business' | 'demo6_business' | 'demo7_business' | 'demo8_business' | 'demo9_business' | 'demo10_business';
 
 const Index = () => {
   // Authentication state
@@ -96,6 +96,21 @@ const Index = () => {
     updateBusinessInfo,
     hasBusinessInfo
   } = useBusinessInfo(isLoggedIn ? businessId : '');
+
+  // Helper function to check if business info exists
+  const checkBusinessInfoExists = async (businessId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('business_info')
+        .select('id')
+        .eq('business_id', businessId)
+        .single();
+      
+      return !error && data;
+    } catch (error) {
+      return false;
+    }
+  };
 
   // State management
   const [currentView, setCurrentView] = useState('billing');
@@ -178,6 +193,13 @@ Thank you for your business! 🙏
     window.open(whatsappUrl, '_blank');
   };
 
+  // Generate unique 6-digit bill number
+  const generateBillNumber = () => {
+    // Generate a random 6-digit number
+    const randomNumber = Math.floor(100000 + Math.random() * 900000);
+    return randomNumber.toString();
+  };
+
   // Refs
   const customerInputRef = useRef<HTMLInputElement>(null);
 
@@ -185,6 +207,11 @@ Thank you for your business! 🙏
   const [showBillActions, setShowBillActions] = useState(false);
   const [confirmedBill, setConfirmedBill] = useState<Bill | null>(null);
   const [isBalanceOnlyBill, setIsBalanceOnlyBill] = useState(false);
+  
+  // Bill editing state
+  const [billSearchNumber, setBillSearchNumber] = useState('');
+  const [foundBill, setFoundBill] = useState<Bill | null>(null);
+  const [showBillEdit, setShowBillEdit] = useState(false);
 
   // Filter customers based on input with real-time balance fetching
   const filteredCustomers = customers.filter(customer => 
@@ -273,12 +300,145 @@ Thank you for your business! 🙏
       return;
     }
 
+    // For Test123 shop - use pre-populated business info and ensure it's saved
+    if (id === 'test123') {
+      setShopDetails({
+        shopName: 'Test Shop 123',
+        address: 'Test Address, Test City, Test State 123456',
+        gstNumber: '99TTTTT0000T1Z5'
+      });
+      setShopDetailsLoaded(true);
+      
+      // Ensure business info is saved for Test123 to prevent capture screen
+      setTimeout(async () => {
+        try {
+          const businessInfoExists = await checkBusinessInfoExists(id);
+          if (!businessInfoExists) {
+            await saveBusinessInfo({
+              business_id: id,
+              business_name: 'Test Shop 123',
+              address: 'Test Address, Test City, Test State 123456',
+              gst_number: '99TTTTT0000T1Z5',
+              phone: '9876543210',
+              email: 'test123@example.com'
+            });
+            console.log('Business info saved for Test123 shop');
+          }
+        } catch (error) {
+          console.log('Business info already exists or error saving:', error);
+        }
+      }, 1000);
+      
+      return;
+    }
+
     // For other business IDs, check if business info exists
     // This will be handled by the business info hook and show capture if needed
   };
 
   // Handle logout
+  // Auto-download data function
+  const downloadData = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const data = {
+      customers: customers,
+      bills: bills.filter(bill => bill.date === today),
+      products: products,
+      downloadDate: new Date().toISOString(),
+      businessId: businessId,
+      userType: userType
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `billing_data_${businessId}_${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Search for bill by number
+  const searchBillByNumber = () => {
+    const bill = bills.find(b => b.billNumber === billSearchNumber);
+    if (bill) {
+      setFoundBill(bill);
+      setShowBillEdit(true);
+      setBillSearchNumber('');
+    } else {
+      alert('Bill not found. Please check the bill number.');
+    }
+  };
+
+  // Parse uploaded data function
+  const parseData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        
+        if (data.customers && data.bills && data.products) {
+          // Restore customers
+          for (const customer of data.customers) {
+            try {
+              await addCustomer(customer.name, customer.phone, customer.balance);
+            } catch (error) {
+              console.log(`Customer ${customer.name} might already exist`);
+            }
+          }
+          
+          // Restore bills
+          for (const bill of data.bills) {
+            try {
+              await addBill({
+                billNumber: bill.billNumber,
+                customer: bill.customer,
+                customerPhone: bill.customerPhone,
+                date: bill.date,
+                items: bill.items,
+                totalAmount: bill.totalAmount,
+                paidAmount: bill.paidAmount,
+                balanceAmount: bill.balanceAmount,
+                paymentMethod: bill.paymentMethod || 'cash'
+              });
+            } catch (error) {
+              console.log(`Bill ${bill.billNumber} might already exist`);
+            }
+          }
+          
+          // Restore products
+          for (const product of data.products) {
+            try {
+              await addProduct({ name: product.name, business_id: businessId });
+            } catch (error) {
+              console.log(`Product ${product.name} might already exist`);
+            }
+          }
+          
+          alert('Data restored successfully! Please refresh the page to see updated data.');
+        } else {
+          alert('Invalid data file format');
+        }
+      } catch (error) {
+        alert('Error parsing data file');
+        console.error(error);
+      }
+    };
+    input.click();
+  };
+
   const handleLogout = () => {
+    // Auto-download data before logout
+    downloadData();
+    
     setIsLoggedIn(false);
     setCurrentView('billing');
     setShowShopRegistration(false);
@@ -341,10 +501,6 @@ Thank you for your business! 🙏
       if (isWalkInMode && phone.length >= 10) {
         setSelectedCustomer(`Walk-In Customer (${phone})`);
         console.log(`[BILLING PAGE] Set walk-in customer name: Walk-In Customer (${phone})`);
-        // For walk-in customers, no previous balance is fetched or used
-        setPreviousBalance(0);
-        console.log(`[BILLING PAGE] Walk-in mode: Previous balance set to 0`);
-        return; // Exit early for walk-in customers
       }
       
       // Auto-fill previous balance when phone is entered - FETCH REAL-TIME FROM DATABASE
@@ -536,25 +692,24 @@ Thank you for your business! 🙏
       alert('Please enter a valid phone number (at least 10 digits)');
       return;
     }
-    
-    // CRITICAL: Validate that we have either customer name or phone (for walk-in)
-    if (!selectedCustomer && !selectedCustomerPhone) {
-      alert('Please provide customer information');
-      return;
-    }
 
     // Check if it's a balance-only payment or has items
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const existingBalance = customers.find(c => c.name === selectedCustomer)?.balance || 0;
     const hasPaymentAmount = paymentAmount && parseFloat(paymentAmount) > 0;
     
-    // For walk-in customers, we don't check existing balance
-    const effectiveExistingBalance = isWalkInMode ? 0 : existingBalance;
-    
-    // Allow balance-only payment if customer has existing balance and payment amount is entered
-    if (validItems.length === 0 && effectiveExistingBalance <= 0 && !hasPaymentAmount) {
-      alert('Please add at least one item or enter payment amount for balance payment');
-      return;
+    // For walk-in customers, only require items (no balance check needed)
+    if (isWalkInMode) {
+      if (validItems.length === 0) {
+        alert('Please add at least one item for walk-in customer');
+        return;
+      }
+    } else {
+      // For regular customers, allow balance-only payment if customer has existing balance and payment amount is entered
+      if (validItems.length === 0 && existingBalance <= 0 && !hasPaymentAmount) {
+        alert('Please add at least one item or enter payment amount for balance payment');
+        return;
+      }
     }
 
     // PAYMENT VALIDATION: Allow overpayments for advance credits
@@ -562,9 +717,9 @@ Thank you for your business! 🙏
       const paidAmount = parseFloat(paymentAmount);
       const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
       
-      if (validItems.length === 0 && effectiveExistingBalance > 0) {
+      if (validItems.length === 0 && existingBalance > 0) {
         // Balance-only payment: Allow overpayment for advance credit
-        const potentialNewBalance = effectiveExistingBalance - paidAmount;
+        const potentialNewBalance = existingBalance - paidAmount;
         if (potentialNewBalance < 0) {
           // Show advance payment message
           const advanceAmount = Math.abs(potentialNewBalance);
@@ -572,7 +727,7 @@ Thank you for your business! 🙏
         }
       } else {
         // Regular bill with items: Allow overpayment for advance credit
-        const totalBillAmount = effectiveExistingBalance + itemsTotal;
+        const totalBillAmount = existingBalance + itemsTotal;
         const potentialNewBalance = totalBillAmount - paidAmount;
         if (potentialNewBalance < 0) {
           // Show advance payment message
@@ -595,22 +750,20 @@ Thank you for your business! 🙏
       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
       
-      // For walk-in customers, no previous balance is used
-      const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
-      
       // Running balance calculation: Total = Previous Balance + Current Items
-      const totalBillAmount = effectivePreviousBalance + itemsTotal;
+      const totalBillAmount = previousBalance + itemsTotal;
       const newBalance = totalBillAmount - 0; // No payment, so new balance = total bill amount
 
       // Create bill record with running balance logic
       const billRecord = {
+        billNumber: generateBillNumber(),
         customer: isWalkInMode ? `Walk-In Customer (${selectedCustomerPhone})` : selectedCustomer,
         customerPhone: selectedCustomerPhone,
         date: selectedDate,
         items: validItems,
         totalAmount: itemsTotal, // Individual transaction amount (items only)
         paidAmount: 0,
-        balanceAmount: newBalance, // Amount to carry forward
+        balanceAmount: isWalkInMode ? 0 : newBalance, // Walk-in customers don't carry balance
         paymentMethod: 'cash' as const,
       };
 
@@ -631,10 +784,8 @@ Thank you for your business! 🙏
       setIsBalanceOnlyBill(true);
       setShowBillActions(true);
       
-      // Critical: Refresh customers data to sync balance across all views (only for non-walk-in customers)
-      if (!isWalkInMode) {
-        await refreshCustomersData();
-      }
+      // Critical: Refresh customers data to sync balance across all views
+      await refreshCustomersData();
       
       console.log('Bill confirmation without payment completed successfully');
       
@@ -682,28 +833,25 @@ Thank you for your business! 🙏
       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
       
-      // For walk-in customers, no previous balance is used
-      const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
-      
       // Running balance calculation
       let totalBillAmount, newBalance, requiredAmount, transactionAmount;
       
-      if (validItems.length === 0 && effectivePreviousBalance > 0) {
+      if (validItems.length === 0 && previousBalance > 0) {
         // This is a balance-only payment (no new items, just paying existing balance)
-        totalBillAmount = effectivePreviousBalance; // Total is just the previous balance
+        totalBillAmount = previousBalance; // Total is just the previous balance
         transactionAmount = 0; // No purchase amount for payment-only transactions
-        newBalance = effectivePreviousBalance - paidAmount; // Remaining balance after payment
-        requiredAmount = effectivePreviousBalance; // For validation, but partial payments are allowed
+        newBalance = previousBalance - paidAmount; // Remaining balance after payment
+        requiredAmount = previousBalance; // For validation, but partial payments are allowed
         
         // Allow overpayment for advance credit on balance-only payments
-        if (paidAmount > effectivePreviousBalance) {
-          const advanceAmount = paidAmount - effectivePreviousBalance;
+        if (paidAmount > previousBalance) {
+          const advanceAmount = paidAmount - previousBalance;
           console.log(`Advance payment: ₹${advanceAmount.toFixed(2)} will be credited to customer`);
         }
       } else {
         // Regular bill with items: Total = Previous Balance + Current Items
         transactionAmount = itemsTotal; // Individual transaction amount (items only)
-        totalBillAmount = effectivePreviousBalance + itemsTotal;
+        totalBillAmount = previousBalance + itemsTotal;
         newBalance = totalBillAmount - paidAmount; // New balance after payment
         requiredAmount = totalBillAmount; // For validation, but partial payments are allowed
         
@@ -716,13 +864,14 @@ Thank you for your business! 🙏
 
       // Create bill record with running balance logic
       const billRecord = {
+        billNumber: generateBillNumber(),
         customer: isWalkInMode ? `Walk-In Customer (${selectedCustomerPhone})` : selectedCustomer,
         customerPhone: selectedCustomerPhone,
         date: selectedDate,
         items: validItems,
         totalAmount: transactionAmount,
         paidAmount,
-        balanceAmount: newBalance,
+        balanceAmount: isWalkInMode ? 0 : newBalance, // Walk-in customers don't carry balance
         paymentMethod,
         upiType: paymentMethod === 'upi' ? upiType : undefined,
         bankName: paymentMethod === 'check' ? bankName : undefined,
@@ -768,12 +917,9 @@ Thank you for your business! 🙏
   const generateBillContent = async (bill: Bill, uiPreviousBalance: number) => {
     const time = new Date(bill.timestamp).toLocaleTimeString();
     
-    // Check if this is a walk-in customer bill
-    const isWalkInBill = bill.customer.includes('Walk-In Customer');
-    
     // CRITICAL FIX: Use the previous balance from UI state (before the bill was created)
-    // For walk-in customers, previous balance is always 0
-    const billPreviousBalance = isWalkInBill ? 0 : uiPreviousBalance;
+    // This ensures printed bills match exactly what was displayed in the UI
+    const billPreviousBalance = uiPreviousBalance;
     
     const itemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
     
@@ -793,7 +939,6 @@ Thank you for your business! 🙏
     
     // Add logging to verify calculations match UI
     console.log(`[BILL GENERATION] Calculation breakdown:
-      Walk-in Bill: ${isWalkInBill}
       Previous Balance: ₹${billPreviousBalance}
       Items Total: ₹${itemsTotal}
       Total Bill Amount: ₹${totalBillAmount}
@@ -803,26 +948,20 @@ Thank you for your business! 🙏
     let paymentMethodText = '';
     if (bill.paidAmount > 0) {
       if (bill.paymentMethod === 'cash') {
-        paymentMethodText = `Payment Method: CASH`;
+        paymentMethodText = `\nPayment Method: Cash`;
       } else if (bill.paymentMethod === 'upi') {
-        paymentMethodText = `Payment Method: UPI - ${bill.upiType}`;
+        paymentMethodText = `\nPayment Method: UPI - ${bill.upiType}`;
       } else if (bill.paymentMethod === 'check') {
-        paymentMethodText = `Payment Method: CHECK/DD - ${bill.bankName} - ${bill.checkNumber}`;
+        paymentMethodText = `\nPayment Method: Check/DD - ${bill.bankName} - ${bill.checkNumber}`;
       } else if (bill.paymentMethod === 'cash_gpay') {
-        paymentMethodText = `Payment Method: CASH + GPAY
-Cash: ₹${bill.cashAmount?.toFixed(2) || '0.00'} + GPay: ₹${bill.gpayAmount?.toFixed(2) || '0.00'}`;
+        paymentMethodText = `\nPayment Method: Cash: ₹${bill.cashAmount?.toFixed(2) || '0.00'} + GPay: ₹${bill.gpayAmount?.toFixed(2) || '0.00'}`;
       }
-    } else {
-      paymentMethodText = `Payment Method: NO PAYMENT (Balance Bill)`;
     }
 
-    // Different headers based on business with prominent Invoice No display
+    // Different headers based on business
     let businessHeader = '';
     if (businessId === 'vasan') {
-      businessHeader = `INVOICE NO: ${bill.billNumber || 'N/A'}
-════════════════════════════════
-
-VASAN CHICKEN
+      businessHeader = `VASAN CHICKEN
 ===============
 61, Vadivelu Mudali St, Chinnaiyan Colony, 
 Perambur, Chennai, Tamil Nadu 600011
@@ -830,10 +969,7 @@ ${shopDetails?.gstNumber ? `GST: ${shopDetails.gstNumber}` : ''}
 
 `;
     } else {
-      businessHeader = `INVOICE NO: ${bill.billNumber || 'N/A'}
-════════════════════════════════
-
-${shopDetails?.shopName || 'BILLING SYSTEM'}
+      businessHeader = `${shopDetails?.shopName || 'BILLING SYSTEM'}
 ==============
 ${shopDetails?.address || '21 West Cemetery Road, Old Washermanpet, Chennai 21'}
 ${shopDetails?.gstNumber ? `GST: ${shopDetails.gstNumber}` : ''}
@@ -845,10 +981,12 @@ Email: mathangopal5467@yahoo.com
     }
 
     // Generate the bill content with items
-    return `${businessHeader}Date: ${bill.date}
+    return `${businessHeader}Invoice No: ${bill.billNumber || 'N/A'}
+Date: ${bill.date}
 Time: ${time}
 Customer: ${bill.customer}
 Phone: ${bill.customerPhone}
+Payment Mode: ${bill.paymentMethod || 'Cash'}
 
 ITEMS:
 ------
@@ -858,12 +996,11 @@ ${bill.items.length === 0 ? 'No items - Payment Only Transaction' :
   ).join('\n')}
 
 --------------------------------
-${isWalkInBill ? '' : `Previous Balance: ₹${billPreviousBalance.toFixed(2)}\n`}Current Items: ₹${itemsTotal.toFixed(2)}
+Previous Balance: ₹${billPreviousBalance.toFixed(2)}
+Current Items: ₹${itemsTotal.toFixed(2)}
 Total Bill Amount: ₹${bill.items.length === 0 && bill.paidAmount > 0 ? '0.00' : totalBillAmount.toFixed(2)}
 Payment Amount: ₹${bill.paidAmount.toFixed(2)}
-New Balance: ₹${newBalance.toFixed(2)}
-
-${paymentMethodText}
+New Balance: ₹${newBalance.toFixed(2)}${paymentMethodText}
 ================================
 
 Thank you for your business!`.trim();
@@ -1302,10 +1439,10 @@ ${bill.items.map(item =>
 Total: ₹${currentItemsTotal.toFixed(2)}
 Paid: ₹${bill.paidAmount.toFixed(2)}
 Balance: ₹${bill.balanceAmount.toFixed(2)}
-PAYMENT METHOD: ${bill.paymentMethod === 'cash' ? 'CASH' : 
+Payment: ${bill.paymentMethod === 'cash' ? 'Cash' : 
           bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
-          bill.paymentMethod === 'cash_gpay' ? 'CASH + GPAY' :
-          `CHECK/DD - ${bill.bankName} - ${bill.checkNumber}`}
+          bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
+          `Check/DD - ${bill.bankName} - ${bill.checkNumber}`}
 -----------------------------------
 `;
 }).join('')}
@@ -1401,11 +1538,7 @@ Thank you for your business!
     // Update customer balance
     await updateCustomerBalance(selectedCustomer, newBalance);
     
-    alert(`Customer balance updated successfully!
-Previous Balance: ₹${existingBalance.toFixed(2)}
-New Items: ₹${itemsTotal.toFixed(2)}
-Payment: ₹${paidAmount.toFixed(2)}
-New Balance: ₹${newBalance.toFixed(2)}`);
+    alert(`Customer balance updated successfully!\nPrevious Balance: ₹${existingBalance.toFixed(2)}\nNew Items: ₹${itemsTotal.toFixed(2)}\nPayment: ₹${paidAmount.toFixed(2)}\nNew Balance: ₹${newBalance.toFixed(2)}`);
   };
 
   // Generate comprehensive customer data for download
@@ -1453,7 +1586,7 @@ DETAILED BILLS:
         const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
         const totalBillAmount = previousBalance + currentItemsTotal;
         
-        content += `\nBill #${index + 1} - ${bill.billNumber || 'N/A'}
+        content += `\nInvoice #${index + 1} - ${bill.billNumber || 'N/A'}
 Date: ${formatDate(bill.date)}
 Time: ${bill.timestamp.toLocaleTimeString('en-IN')}
 ----------------------------------------
@@ -1564,8 +1697,8 @@ Generated by Billing System`;
     return <Login onLogin={handleLogin} />;
   }
 
-  // Show business information capture if needed (for non-mathan, non-vasan users)
-  if (isLoggedIn && !businessInfoLoading && !hasBusinessInfo && businessId !== 'santhosh1' && businessId !== 'vasan') {
+  // Show business information capture if needed (for non-mathan, non-vasan, non-test123 users)
+  if (isLoggedIn && !businessInfoLoading && !hasBusinessInfo && businessId !== 'santhosh1' && businessId !== 'vasan' && businessId !== 'test123') {
     if (!showBusinessInfoCapture) {
       setShowBusinessInfoCapture(true);
     }
@@ -1724,7 +1857,38 @@ Generated by Billing System`;
         {/* Billing View */}
         {currentView === 'billing' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
-            <h2 className="text-lg sm:text-xl font-bold mb-3">Create Bill</h2>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-lg sm:text-xl font-bold">Create Bill</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={parseData}
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm flex items-center"
+                >
+                  <RefreshCw className="mr-1 h-4 w-4" />
+                  Parse Data
+                </button>
+              </div>
+            </div>
+
+            {/* Bill Search Section */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={billSearchNumber}
+                  onChange={(e) => setBillSearchNumber(e.target.value)}
+                  placeholder="Enter Bill Number to Edit (6 digits)"
+                  className="flex-1 p-2 border border-gray-300 rounded-lg text-sm"
+                  maxLength={6}
+                />
+                <button
+                  onClick={searchBillByNumber}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                >
+                  Edit Bill
+                </button>
+              </div>
+            </div>
             
             {/* Compact form layout for desktop */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -1966,11 +2130,11 @@ Generated by Billing System`;
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-3">
               <div className="bg-gray-50 p-3 rounded-lg space-y-1">
                 <div className="text-sm">Items Total: ₹{totalAmount.toFixed(2)}</div>
-                {selectedCustomer && previousBalance > 0 && !isWalkInMode && (
+                {selectedCustomer && previousBalance > 0 && (
                   <div className="text-sm text-red-600">Previous Balance: ₹{previousBalance.toFixed(2)}</div>
                 )}
                 <div className="text-xl font-bold border-t pt-1">
-                  Total Bill Amount: ₹{(isWalkInMode ? totalAmount : previousBalance + totalAmount).toFixed(2)}
+                  Total Bill Amount: ₹{(previousBalance + totalAmount).toFixed(2)}
                 </div>
               </div>
               
@@ -1992,14 +2156,11 @@ Generated by Billing System`;
                   const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                   const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                   
-                  // For walk-in customers, no previous balance
-                  const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
-                  
                   let requiredAmount;
-                  if (validItems.length === 0 && effectivePreviousBalance > 0) {
-                    requiredAmount = effectivePreviousBalance;
+                  if (validItems.length === 0 && previousBalance > 0) {
+                    requiredAmount = previousBalance;
                   } else {
-                    requiredAmount = effectivePreviousBalance + itemsTotal;
+                    requiredAmount = previousBalance + itemsTotal;
                   }
                   
                   if (paidAmount > requiredAmount) {
@@ -2027,7 +2188,7 @@ Generated by Billing System`;
               
               <div className="flex flex-col gap-2">
                 <div className="text-lg font-bold">
-                  New Balance: ₹{(isWalkInMode ? (totalAmount - (parseFloat(paymentAmount) || 0)) : ((totalAmount + previousBalance) - (parseFloat(paymentAmount) || 0))).toFixed(2)}
+                  New Balance: ₹{((totalAmount + previousBalance) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
                 </div>
                 <button
                   onClick={() => {
@@ -2226,14 +2387,11 @@ Generated by Billing System`;
                     const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                     
-                    // For walk-in customers, no previous balance
-                    const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
-                    
                     let requiredAmount;
-                    if (validItems.length === 0 && effectivePreviousBalance > 0) {
-                      requiredAmount = effectivePreviousBalance;
+                    if (validItems.length === 0 && previousBalance > 0) {
+                      requiredAmount = previousBalance;
                     } else {
-                      requiredAmount = effectivePreviousBalance + itemsTotal;
+                      requiredAmount = previousBalance + itemsTotal;
                     }
                     
                     const difference = paidAmount - requiredAmount;
@@ -2243,12 +2401,10 @@ Generated by Billing System`;
                       <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
                         <h4 className="font-medium text-gray-800 mb-2">Payment Summary</h4>
                         <div className="text-sm space-y-1">
-                          {!isWalkInMode && (
-                            <div className="flex justify-between">
-                              <span>Previous Balance:</span>
-                              <span>₹{effectivePreviousBalance.toFixed(2)}</span>
-                            </div>
-                          )}
+                          <div className="flex justify-between">
+                            <span>Previous Balance:</span>
+                            <span>₹{previousBalance.toFixed(2)}</span>
+                          </div>
                           <div className="flex justify-between">
                             <span>Current Items:</span>
                             <span>₹{itemsTotal.toFixed(2)}</span>
@@ -2301,14 +2457,11 @@ Generated by Billing System`;
                       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
                       
-                      // For walk-in customers, no previous balance
-                      const effectivePreviousBalance = isWalkInMode ? 0 : previousBalance;
-                      
                       let requiredAmount;
-                      if (validItems.length === 0 && effectivePreviousBalance > 0) {
-                        requiredAmount = effectivePreviousBalance;
+                      if (validItems.length === 0 && previousBalance > 0) {
+                        requiredAmount = previousBalance;
                       } else {
-                        requiredAmount = effectivePreviousBalance + itemsTotal;
+                        requiredAmount = previousBalance + itemsTotal;
                       }
                       
                       const isValidPayment = paidAmount > 0;
@@ -2354,7 +2507,7 @@ Generated by Billing System`;
                       Bill Created Successfully!
                     </h3>
                     <p className="text-sm text-green-700">
-                      Bill #{confirmedBill.billNumber || confirmedBill.id} has been saved securely
+                      Invoice #{confirmedBill.billNumber || confirmedBill.id} has been saved securely
                     </p>
                   </div>
                 </div>
@@ -2483,6 +2636,16 @@ Generated by Billing System`;
               businessId={businessId}
             />
             
+            <div className="mb-4 flex justify-end">
+              <button
+                onClick={parseData}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm flex items-center"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Parse Data
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 gap-8">
               {/* Customer Management */}
               <CustomerManager 
@@ -2670,7 +2833,7 @@ Generated by Billing System`;
                     <thead>
                       <tr className="bg-gray-100">
                         <th className="border border-gray-300 p-2 text-left">Date</th>
-                        <th className="border border-gray-300 p-2 text-left">Invoice No</th>
+                        <th className="border border-gray-300 p-2 text-left">Bill No</th>
                         <th className="border border-gray-300 p-2 text-left">Items</th>
                         <th className="border border-gray-300 p-2 text-left">Rate</th>
                         <th className="border border-gray-300 p-2 text-right">Purchase</th>
@@ -2683,7 +2846,7 @@ Generated by Billing System`;
                       {customerHistory.map((bill, index) => (
                         <tr key={index} className="hover:bg-gray-50">
                           <td className="border border-gray-300 p-2">{formatDate(bill.date)}</td>
-                          <td className="border border-gray-300 p-2 font-mono font-bold">{bill.billNumber || 'N/A'}</td>
+                          <td className="border border-gray-300 p-2 font-mono">#{bill.billNumber || 'N/A'}</td>
                           <td className="border border-gray-300 p-2">
                             {bill.items.map((item, idx) => (
                               <div key={idx} className="text-sm">
@@ -2704,12 +2867,10 @@ Generated by Billing System`;
                           <td className="border border-gray-300 p-2 text-right text-lg font-bold text-green-600">₹{bill.paidAmount.toFixed(2)}</td>
                           <td className="border border-gray-300 p-2 text-right text-lg font-bold">₹{bill.balanceAmount.toFixed(2)}</td>
                           <td className="border border-gray-300 p-2">
-                            <span className="font-medium text-sm">
-                              {bill.paymentMethod === 'cash' ? '💵 CASH' : 
-                               bill.paymentMethod === 'upi' ? `📱 UPI - ${bill.upiType}` :
-                               bill.paymentMethod === 'cash_gpay' ? '💵+📱 CASH + GPAY' :
-                               `🏦 CHECK/DD - ${bill.bankName}`}
-                            </span>
+                            {bill.paymentMethod === 'cash' ? 'Cash' : 
+                             bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
+                             bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
+                             `Check/DD - ${bill.bankName}`}
                           </td>
                         </tr>
                       ))}
@@ -2748,6 +2909,114 @@ Generated by Billing System`;
             onCancel={handleBusinessInfoCancel}
             businessId={businessId}
           />
+        )}
+
+        {/* Bill Edit Modal */}
+        {showBillEdit && foundBill && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">Edit Bill #{foundBill.billNumber}</h2>
+                <button
+                  onClick={() => {
+                    setShowBillEdit(false);
+                    setFoundBill(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                    <input
+                      type="text"
+                      value={foundBill.customer}
+                      readOnly
+                      className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={foundBill.customerPhone}
+                      readOnly
+                      className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <input
+                      type="date"
+                      value={foundBill.date}
+                      readOnly
+                      className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
+                    <input
+                      type="number"
+                      value={foundBill.totalAmount}
+                      readOnly
+                      className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Paid Amount</label>
+                    <input
+                      type="number"
+                      value={foundBill.paidAmount}
+                      readOnly
+                      className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
+                  <div className="border border-gray-300 rounded-lg p-3 bg-gray-50">
+                    {foundBill.items.map((item, index) => (
+                      <div key={index} className="flex justify-between items-center py-1">
+                        <span>{item.item} - {item.weight}kg @ ₹{item.rate}/kg</span>
+                        <span className="font-medium">₹{item.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex justify-end gap-2 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowBillEdit(false);
+                      setFoundBill(null);
+                    }}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Navigate to EditBillPage with the found bill
+                      setCurrentView('edit-bill');
+                      setCurrentBill(foundBill);
+                      setShowBillEdit(false);
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Edit Details
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
