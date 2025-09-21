@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Calculator, Check, X, Users, History, Printer, FileText, MessageCircle, Calendar, LogOut, Package, BarChart3, RefreshCw, Building2 } from 'lucide-react';
+import { Search, Plus, Calculator, Check, X, Users, History, Printer, FileText, MessageCircle, Calendar, LogOut, Package, BarChart3, Truck, RefreshCw, Building2 } from 'lucide-react';
 import Login from '../components/Login';
 import CustomerManager from '../components/CustomerManager';
 import Products from '../components/Products';
 import SalesDashboard from '../components/SalesDashboard';
 import EditBillPage from '../components/EditBillPage';
+import LoadManager from '../components/LoadManager';
 import ShopRegistration from '../components/ShopRegistration';
 import WalkInBilling from '../components/WalkInBilling';
 import { useSupabaseData } from '../hooks/useSupabaseData';
@@ -140,6 +141,7 @@ const Index = () => {
   const [balanceCustomer, setBalanceCustomer] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [customerHistory, setCustomerHistory] = useState<Bill[]>([]);
   const [addBalanceCustomer, setAddBalanceCustomer] = useState('');
   const [addBalanceAmount, setAddBalanceAmount] = useState('');
@@ -154,25 +156,7 @@ const Index = () => {
   const sendBillToWhatsApp = (phone: string, billData: any) => {
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
-    // For walk-in customers, don't include previous balance in total
-    const newBalance = isWalkInMode ? itemsTotal : previousBalance + itemsTotal;
-
-    // Build bill summary based on customer type
-    let billSummary;
-    if (isWalkInMode) {
-      // Walk-in customers: No previous balance line
-      billSummary = `💰 BILL SUMMARY:
-────────────────
-Current Items: ₹${itemsTotal.toFixed(2)}
-Total Amount: ₹${newBalance.toFixed(2)}`;
-    } else {
-      // Regular customers: Include previous balance
-      billSummary = `💰 BILL SUMMARY:
-────────────────
-Previous Balance: ₹${previousBalance.toFixed(2)}
-Current Items: ₹${itemsTotal.toFixed(2)}
-Total Amount: ₹${newBalance.toFixed(2)}`;
-    }
+    const newBalance = previousBalance + itemsTotal;
 
     const billContent = `
 🏪 ${shopDetails?.shopName || 'BILLING SYSTEM'}
@@ -191,7 +175,11 @@ ${validItems.map(item =>
   `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
 ).join('\n')}
 
-${billSummary}
+💰 BILL SUMMARY:
+────────────────
+Previous Balance: ₹${previousBalance.toFixed(2)}
+Current Items: ₹${itemsTotal.toFixed(2)}
+Total Amount: ₹${newBalance.toFixed(2)}
 
 Thank you for your business! 🙏
     `.trim();
@@ -1006,11 +994,10 @@ ${bill.items.length === 0 ? 'No items - Payment Only Transaction' :
   ).join('\n')}
 
 --------------------------------
-Previous Balance: ₹${billPreviousBalance.toFixed(2)}
-Current Items: ₹${itemsTotal.toFixed(2)}
+${isWalkInCustomer ? '' : `Previous Balance: ₹${billPreviousBalance.toFixed(2)}\n`}Current Items: ₹${itemsTotal.toFixed(2)}
 Total Bill Amount: ₹${bill.items.length === 0 && bill.paidAmount > 0 ? '0.00' : totalBillAmount.toFixed(2)}
 Payment Amount: ₹${bill.paidAmount.toFixed(2)}
-New Balance: ₹${newBalance.toFixed(2)}${paymentMethodText}
+${isWalkInCustomer ? '' : `New Balance: ₹${newBalance.toFixed(2)}`}${paymentMethodText}
 ================================
 
 Thank you for your business!`.trim();
@@ -1339,6 +1326,7 @@ Use "Confirm Bill" to save this bill.
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
+
   // Get customer history with improved date filtering
   const getCustomerHistory = () => {
     if (!balanceCustomer) {
@@ -1346,9 +1334,38 @@ Use "Confirm Bill" to save this bill.
       return;
     }
     
-    let filteredHistory = bills.filter(bill => bill.customer === balanceCustomer);
+    let filteredHistory;
     
-    if (startDate && endDate) {
+    if (balanceCustomer === 'ALL_CUSTOMERS') {
+      // Get all bills including walk-in customers
+      filteredHistory = bills;
+    } else {
+      // Get bills for specific customer
+      filteredHistory = bills.filter(bill => bill.customer === balanceCustomer);
+    }
+    
+    // Handle month selection
+    if (selectedMonth === 'current') {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      endOfMonth.setHours(23, 59, 59, 999);
+      
+      filteredHistory = filteredHistory.filter(bill => {
+        const billDate = new Date(bill.date);
+        return billDate >= startOfMonth && billDate <= endOfMonth;
+      });
+    } else if (selectedMonth === 'last') {
+      const now = new Date();
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      endOfLastMonth.setHours(23, 59, 59, 999);
+      
+      filteredHistory = filteredHistory.filter(bill => {
+        const billDate = new Date(bill.date);
+        return billDate >= startOfLastMonth && billDate <= endOfLastMonth;
+      });
+    } else if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999); // Include the entire end date
@@ -1495,6 +1512,105 @@ Thank you for your business!
     URL.revokeObjectURL(url);
   };
 
+  // Download PDF report for auditor
+  const downloadPDFReport = () => {
+    if (customerHistory.length === 0) {
+      alert('No history to download');
+      return;
+    }
+
+    // Create a new window for PDF generation
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const reportTitle = balanceCustomer === 'ALL_CUSTOMERS' ? 'All Customers Report' : `${balanceCustomer} Report`;
+    const dateRange = selectedMonth === 'current' ? 'Current Month' : 
+                     selectedMonth === 'last' ? 'Last Month' : 
+                     `${startDate} to ${endDate}`;
+
+    const totalSales = customerHistory.reduce((sum, bill) => sum + bill.totalAmount, 0);
+    const totalPaid = customerHistory.reduce((sum, bill) => sum + bill.paidAmount, 0);
+    const totalBalance = customerHistory.reduce((sum, bill) => sum + bill.balanceAmount, 0);
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${reportTitle}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .summary { background-color: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+          .summary h3 { margin-top: 0; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+          .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${businessInfo?.business_name || 'Business'} - ${reportTitle}</h1>
+          <p>Date Range: ${dateRange}</p>
+          <p>Generated on: ${new Date().toLocaleDateString()}</p>
+        </div>
+
+        <div class="summary">
+          <h3>Summary</h3>
+          <p><strong>Total Bills:</strong> ${customerHistory.length}</p>
+          <p><strong>Total Sales:</strong> ₹${totalSales.toFixed(2)}</p>
+          <p><strong>Total Paid:</strong> ₹${totalPaid.toFixed(2)}</p>
+          <p><strong>Outstanding Balance:</strong> ₹${totalBalance.toFixed(2)}</p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Bill No</th>
+              <th>Customer</th>
+              <th>Phone</th>
+              <th>Total Amount</th>
+              <th>Paid Amount</th>
+              <th>Balance</th>
+              <th>Payment Method</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${customerHistory.map(bill => `
+              <tr>
+                <td>${bill.date}</td>
+                <td>${bill.billNumber || 'N/A'}</td>
+                <td>${bill.customer}</td>
+                <td>${bill.customerPhone || 'N/A'}</td>
+                <td>₹${bill.totalAmount.toFixed(2)}</td>
+                <td>₹${bill.paidAmount.toFixed(2)}</td>
+                <td>₹${bill.balanceAmount.toFixed(2)}</td>
+                <td>${bill.paymentMethod || 'Cash'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <p>This report was generated by the billing system for audit purposes.</p>
+          <p>Business Address: ${businessInfo?.address || 'Not specified'}</p>
+          <p>GST Number: ${businessInfo?.gst_number || 'Not specified'}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    
+    // Wait for content to load then print
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+  };
+
   // Streamlined Send history to WhatsApp
   const sendHistoryToWhatsApp = () => {
     if (customerHistory.length === 0) return;
@@ -1539,11 +1655,7 @@ Thank you for your business!
     // Update customer balance
     await updateCustomerBalance(selectedCustomer, newBalance);
     
-    alert(`Customer balance updated successfully!
-Previous Balance: ₹${existingBalance.toFixed(2)}
-New Items: ₹${itemsTotal.toFixed(2)}
-Payment: ₹${paidAmount.toFixed(2)}
-New Balance: ₹${newBalance.toFixed(2)}`);
+    alert(`Customer balance updated successfully!\nPrevious Balance: ₹${existingBalance.toFixed(2)}\nNew Items: ₹${itemsTotal.toFixed(2)}\nPayment: ₹${paidAmount.toFixed(2)}\nNew Balance: ₹${newBalance.toFixed(2)}`);
   };
 
   // Generate comprehensive customer data for download
@@ -1785,6 +1897,17 @@ Generated by Billing System`;
             >
               <FileText className="inline mr-1 h-4 w-4" />
               Edit Bill
+            </button>
+            <button
+              onClick={() => setCurrentView('load')}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
+                currentView === 'load' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <Truck className="inline mr-1 h-4 w-4" />
+              Load
             </button>
             <button
               onClick={() => setCurrentView('products')}
@@ -2579,6 +2702,12 @@ Generated by Billing System`;
           </div>
         )}
 
+        {/* Load View */}
+        {currentView === 'load' && (
+          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
+            <LoadManager businessId={businessId} suppliers={customers.map(c => c.name)} />
+          </div>
+        )}
 
         {/* Edit Bill View */}
         {currentView === 'editBill' && (
@@ -2695,7 +2824,7 @@ Generated by Billing System`;
             />
             
             {/* Customer Selection and Date Range */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Select Customer
@@ -2706,6 +2835,7 @@ Generated by Billing System`;
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Choose Customer</option>
+                  <option value="ALL_CUSTOMERS">All Customers</option>
                   {customers.map((customer, index) => (
                     <option key={index} value={customer.name}>{customer.name}</option>
                   ))}
@@ -2733,6 +2863,21 @@ Generated by Billing System`;
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Month Selection
+                </label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Month</option>
+                  <option value="current">Current Month</option>
+                  <option value="last">Last Month</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
               <div className="flex items-end">
                 <button
                   onClick={getCustomerHistory}
@@ -2744,7 +2889,7 @@ Generated by Billing System`;
             </div>
 
             {/* Current Balance - UPDATED with bigger font and last billed date */}
-            {balanceCustomer && (
+            {balanceCustomer && balanceCustomer !== 'ALL_CUSTOMERS' && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
                 <h3 className="text-lg font-semibold">
                   {balanceCustomer} - Current Balance: 
@@ -2757,6 +2902,26 @@ Generated by Billing System`;
                     Last Billed: {formatDate(getLastBilledDate(balanceCustomer))}
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* All Customers Summary */}
+            {balanceCustomer === 'ALL_CUSTOMERS' && customerHistory.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+                <h3 className="text-lg font-semibold text-blue-800">
+                  All Customers Summary
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
+                  <div>
+                    <p className="text-sm text-blue-600">Total Bills: <span className="font-bold">{customerHistory.length}</span></p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-600">Total Sales: <span className="font-bold">₹{customerHistory.reduce((sum, bill) => sum + bill.totalAmount, 0).toFixed(2)}</span></p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-600">Total Paid: <span className="font-bold">₹{customerHistory.reduce((sum, bill) => sum + bill.paidAmount, 0).toFixed(2)}</span></p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -2785,6 +2950,13 @@ Generated by Billing System`;
                   >
                     <FileText className="mr-1 h-4 w-4" />
                     Download
+                  </button>
+                  <button
+                    onClick={downloadPDFReport}
+                    className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm flex items-center"
+                  >
+                    <FileText className="mr-1 h-4 w-4" />
+                    PDF Report
                   </button>
                 </div>
 

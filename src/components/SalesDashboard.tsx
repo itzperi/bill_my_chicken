@@ -19,7 +19,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ bills, customers, busin
     totalSales: 0,
     cashAmount: 0,
     upiAmount: 0,
-    checkAmount: 0
+    checkAmount: 0,
+    totalProfit: 0
   });
 
   useEffect(() => {
@@ -29,20 +30,52 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ bills, customers, busin
 
   const fetchRemainingQuantity = async () => {
     try {
-      const { data, error } = await supabase
-        .from('inventory')
-        .select('chicken_stock_kg')
-        .eq('business_id', businessId)
-        .single();
+      // Calculate stock based on load entries and billing
+      let totalStock = 0;
+      
+      // Get all load entries to calculate total stock added
+      const { data: loadEntries, error: loadError } = await supabase
+        .from('load_entries')
+        .select('quantity_after_box')
+        .eq('business_id', businessId);
 
-      if (error && error.code !== 'PGRST116') throw error;
-      setRemainingQuantity((data as any)?.chicken_stock_kg || 0);
+      if (loadError) {
+        console.error('Error fetching load entries:', loadError);
+      } else {
+        totalStock = loadEntries?.reduce((sum, entry) => sum + (entry.quantity_after_box || 0), 0) || 0;
+      }
+
+      // Get all bills to calculate total stock sold
+      const { data: allBills, error: billsError } = await supabase
+        .from('bills')
+        .select('items')
+        .eq('business_id', businessId);
+
+      if (billsError) {
+        console.error('Error fetching bills:', billsError);
+      } else {
+        let totalSold = 0;
+        allBills?.forEach(bill => {
+          if (bill.items && Array.isArray(bill.items)) {
+            bill.items.forEach((item: any) => {
+              if (item.weight) {
+                totalSold += parseFloat(item.weight);
+              }
+            });
+          }
+        });
+        
+        // Calculate remaining stock: Total loaded - Total sold
+        totalStock = Math.max(0, totalStock - totalSold);
+      }
+
+      setRemainingQuantity(totalStock);
     } catch (error) {
-      console.error('Error fetching remaining quantity:', error);
+      console.error('Error calculating remaining quantity:', error);
     }
   };
 
-  const calculateSalesData = () => {
+  const calculateSalesData = async () => {
     const todayBills = bills.filter(bill => bill.date === selectedDate);
     
     // Calculate product-wise sales
@@ -94,12 +127,55 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ bills, customers, busin
       }
     });
 
+    // Calculate profit for today
+    const totalProfit = await calculateTodayProfit(todayBills);
+
     setTodayStats({
       totalSales: todayBills.reduce((sum, bill) => sum + bill.totalAmount, 0),
       cashAmount: cash,
       upiAmount: upi,
-      checkAmount: check
+      checkAmount: check,
+      totalProfit: totalProfit
     });
+  };
+
+  const calculateTodayProfit = async (todayBills: any[]) => {
+    try {
+      // Get load entries for the selected date to get buy prices
+      const { data: loadEntries, error: loadError } = await supabase
+        .from('load_entries')
+        .select('entry_date, buy_price_per_kg, quantity_after_box')
+        .eq('business_id', businessId)
+        .eq('entry_date', selectedDate);
+
+      if (loadError) {
+        console.error('Error fetching load entries for profit calculation:', loadError);
+        return 0;
+      }
+
+      // Calculate total buy cost for the day
+      let totalBuyCost = 0;
+      loadEntries?.forEach(entry => {
+        totalBuyCost += (entry.buy_price_per_kg || 0) * (entry.quantity_after_box || 0);
+      });
+
+      // Calculate total sell revenue for the day
+      let totalSellRevenue = 0;
+      todayBills.forEach(bill => {
+        if (bill.items && Array.isArray(bill.items)) {
+          bill.items.forEach((item: any) => {
+            totalSellRevenue += item.amount || 0;
+          });
+        }
+      });
+
+      // Calculate profit: Sell Revenue - Buy Cost
+      const profit = totalSellRevenue - totalBuyCost;
+      return Math.max(0, profit); // Ensure profit is not negative
+    } catch (error) {
+      console.error('Error calculating profit:', error);
+      return 0;
+    }
   };
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
@@ -119,8 +195,8 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ bills, customers, busin
         </div>
       </div>
 
-      {/* Today's Stats Cards - UPDATED to include remaining quantity */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Today's Stats Cards - UPDATED to include remaining quantity and profit */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
@@ -169,6 +245,17 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ bills, customers, busin
               <p className="text-2xl font-bold">{remainingQuantity.toFixed(2)} kg</p>
             </div>
             <Package className="h-8 w-8 text-red-200" />
+          </div>
+        </div>
+        
+        {/* NEW - Profit Card */}
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-4 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-emerald-100">Today's Profit</p>
+              <p className="text-2xl font-bold">₹{todayStats.totalProfit.toFixed(2)}</p>
+            </div>
+            <TrendingUp className="h-8 w-8 text-emerald-200" />
           </div>
         </div>
       </div>

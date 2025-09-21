@@ -6,30 +6,37 @@ import { supabase } from '@/integrations/supabase/client';
 interface LoadEntry {
   id?: number;
   entry_date: string;
+  supplier_name: string;
   no_of_boxes: number;
   quantity_with_box: number;
   no_of_boxes_after: number;
   quantity_after_box: number;
+  buy_price_per_kg: number;
 }
 
 interface LoadManagerProps {
   businessId: string;
+  suppliers?: string[];
 }
 
-const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
+const LoadManager: React.FC<LoadManagerProps> = ({ businessId, suppliers = [] }) => {
   const [entries, setEntries] = useState<LoadEntry[]>([]);
   const [newEntry, setNewEntry] = useState<LoadEntry>({
     entry_date: new Date().toISOString().split('T')[0],
+    supplier_name: '',
     no_of_boxes: 0,
     quantity_with_box: 0,
     no_of_boxes_after: 0,
-    quantity_after_box: 0
+    quantity_after_box: 0,
+    buy_price_per_kg: 0
   });
   const [currentStock, setCurrentStock] = useState(0);
   const [weeklyConsumption, setWeeklyConsumption] = useState(0);
   const [suggestedPurchase, setSuggestedPurchase] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
+  const [filteredSuppliers, setFilteredSuppliers] = useState<string[]>([]);
 
   // Load existing entries and inventory
   useEffect(() => {
@@ -116,14 +123,34 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
   };
 
   const handleInputChange = (field: keyof LoadEntry, value: string | number) => {
-    const numValue = typeof value === 'string' ? parseFloat(value) || 0 : value;
-    setNewEntry(prev => ({ ...prev, [field]: numValue }));
+    if (field === 'supplier_name' && typeof value === 'string') {
+      setNewEntry(prev => ({ ...prev, [field]: value }));
+      
+      // Filter suppliers based on input
+      if (value.length > 0) {
+        const filtered = suppliers.filter(supplier => 
+          supplier.toLowerCase().includes(value.toLowerCase())
+        );
+        setFilteredSuppliers(filtered);
+        setShowSupplierSuggestions(true);
+      } else {
+        setShowSupplierSuggestions(false);
+      }
+    } else {
+      const numValue = typeof value === 'string' ? parseFloat(value) || 0 : value;
+      setNewEntry(prev => ({ ...prev, [field]: numValue }));
+    }
+  };
+
+  const handleSupplierSelect = (supplierName: string) => {
+    setNewEntry(prev => ({ ...prev, supplier_name: supplierName }));
+    setShowSupplierSuggestions(false);
   };
 
   const handleSaveEntry = async () => {
     try {
-      if (!newEntry.no_of_boxes || !newEntry.quantity_with_box || !newEntry.quantity_after_box) {
-        alert('Please fill in all required fields');
+      if (!newEntry.supplier_name || !newEntry.no_of_boxes || !newEntry.quantity_with_box || !newEntry.quantity_after_box || !newEntry.buy_price_per_kg) {
+        alert('Please fill in all required fields including supplier name and buy price');
         return;
       }
 
@@ -134,10 +161,12 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
       const entryToInsert = {
         business_id: businessId,
         entry_date: newEntry.entry_date,
+        supplier_name: newEntry.supplier_name,
         no_of_boxes: Number(newEntry.no_of_boxes),
         quantity_with_box: Number(newEntry.quantity_with_box),
         no_of_boxes_after: Number(newEntry.no_of_boxes_after),
-        quantity_after_box: Number(newEntry.quantity_after_box)
+        quantity_after_box: Number(newEntry.quantity_after_box),
+        buy_price_per_kg: Number(newEntry.buy_price_per_kg)
       };
 
       console.log('Entry to insert:', entryToInsert);
@@ -159,10 +188,12 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
       // Reset form
       setNewEntry({
         entry_date: new Date().toISOString().split('T')[0],
+        supplier_name: '',
         no_of_boxes: 0,
         quantity_with_box: 0,
         no_of_boxes_after: 0,
-        quantity_after_box: 0
+        quantity_after_box: 0,
+        buy_price_per_kg: 0
       });
 
       // Reload data to get updated inventory and entries
@@ -236,7 +267,7 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
       {/* New Entry Form */}
       <div className="bg-gray-50 p-4 rounded-lg">
         <h3 className="text-lg font-semibold mb-4">Add New Load Entry</h3>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Date</label>
             <input
@@ -245,6 +276,38 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
               onChange={(e) => handleInputChange('entry_date', e.target.value)}
               className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+          <div className="relative">
+            <label className="block text-sm font-medium mb-1">Supplier Name</label>
+            <input
+              type="text"
+              value={newEntry.supplier_name}
+              onChange={(e) => handleInputChange('supplier_name', e.target.value)}
+              onFocus={() => {
+                if (newEntry.supplier_name.length > 0) {
+                  setShowSupplierSuggestions(true);
+                }
+              }}
+              onBlur={() => {
+                // Delay hiding suggestions to allow clicking on them
+                setTimeout(() => setShowSupplierSuggestions(false), 200);
+              }}
+              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              placeholder="Type supplier name (auto-complete available)"
+            />
+            {showSupplierSuggestions && filteredSuppliers.length > 0 && (
+              <div className="absolute z-10 w-full bg-white border border-gray-300 rounded mt-1 max-h-32 overflow-y-auto shadow-lg">
+                {filteredSuppliers.map((supplier, index) => (
+                  <div
+                    key={index}
+                    onClick={() => handleSupplierSelect(supplier)}
+                    className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-sm"
+                  >
+                    {supplier}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">No of Boxes</label>
@@ -288,6 +351,17 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
               placeholder="8.5"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Buy Price (₹/kg)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={newEntry.buy_price_per_kg || ''}
+              onChange={(e) => handleInputChange('buy_price_per_kg', e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              placeholder="150.00"
+            />
+          </div>
         </div>
         <div className="mt-4">
           <button
@@ -309,10 +383,12 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Date</th>
+                <th className="border border-gray-300 p-2 text-left">Supplier Name</th>
                 <th className="border border-gray-300 p-2 text-left">No of Boxes</th>
                 <th className="border border-gray-300 p-2 text-left">Quantity with Box (kg)</th>
                 <th className="border border-gray-300 p-2 text-left">No of Boxes After</th>
                 <th className="border border-gray-300 p-2 text-left">Quantity After Box (kg)</th>
+                <th className="border border-gray-300 p-2 text-left">Buy Price (₹/kg)</th>
                 <th className="border border-gray-300 p-2 text-left">Action</th>
               </tr>
             </thead>
@@ -320,10 +396,12 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
               {entries.map((entry) => (
                 <tr key={entry.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 p-2">{entry.entry_date}</td>
+                  <td className="border border-gray-300 p-2 font-medium">{entry.supplier_name}</td>
                   <td className="border border-gray-300 p-2">{entry.no_of_boxes}</td>
                   <td className="border border-gray-300 p-2">{entry.quantity_with_box}</td>
                   <td className="border border-gray-300 p-2">{entry.no_of_boxes_after}</td>
                   <td className="border border-gray-300 p-2">{entry.quantity_after_box}</td>
+                  <td className="border border-gray-300 p-2">₹{entry.buy_price_per_kg?.toFixed(2) || '0.00'}</td>
                   <td className="border border-gray-300 p-2">
                     <button
                       onClick={() => entry.id && handleDeleteEntry(entry.id)}
@@ -336,7 +414,7 @@ const LoadManager: React.FC<LoadManagerProps> = ({ businessId }) => {
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="border border-gray-300 p-4 text-center text-gray-500">
+                  <td colSpan={8} className="border border-gray-300 p-4 text-center text-gray-500">
                     No entries found. Add your first load entry above.
                   </td>
                 </tr>
